@@ -587,7 +587,16 @@ async function initAioli() {
     const statusEl = document.getElementById('aioli-status');
     statusEl.innerHTML = `<span class="pulse-dot inline-block w-2 h-2 rounded-full bg-yellow-400"></span> Loading MUMmer4…`;
 
-    CLI = await new Aioli(["mummer4/nucmer/4.0.0rc1"]);
+    // Calculate absolute URL for the local nucmer scripts to avoid cross-origin importScripts issues
+    const baseUrl = window.location.href.split('?')[0].split('#')[0].replace(/\/[^\/]*$/, '/');
+    const urlPrefix = baseUrl + "mummer4/4.0.0rc1";
+
+    CLI = await new Aioli([{
+      tool: "mummer4",
+      program: "nucmer",
+      version: "4.0.0rc1",
+      urlPrefix: urlPrefix
+    }]);
 
     aioliReady = true;
     statusEl.innerHTML = `<span class="inline-block w-2 h-2 rounded-full bg-green-400"></span> MUMmer4 ready`;
