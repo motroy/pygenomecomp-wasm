@@ -804,29 +804,37 @@ document.getElementById('btn-run').addEventListener('click', async () => {
   const totalSteps  = nQueries + 4;
 
   try {
-    // ── Step 1: Mount all FASTA files to Aioli virtual FS ──────────────
+    // ── Step 1: Initialize paths ────────
     setProgress(0, totalSteps, 'Mounting sequences…');
-    const filesToMount = [
-      { name: 'ref.fasta', data: refFile.content },
-      ...queryFiles.map((q, i) => ({ name: `query_${i}.fasta`, data: q.content }))
-    ];
-    await CLI.mount(filesToMount);
 
     // ── Steps 2…N+1: Run nucmer for each query ─────────────────────────
     const deltaTexts = [];
+    const baseUrl = window.location.href.split('?')[0].split('#')[0].replace(/\/[^\/]*$/, '/');
+    const urlPrefix = baseUrl + "mummer4/4.0.0rc1";
+
     for (let i = 0; i < nQueries; i++) {
       setProgress(i + 1, totalSteps, `Aligning ${queryFiles[i].name} with MUMmer4/nucmer… (${i + 1}/${nQueries})`);
 
-      // Remove any previous delta output to avoid stale reads
-      try { await CLI.fs.unlink('output.delta'); } catch (_) {}
+      // Re-initialize Aioli for each query to avoid state retention issues from nucmer's argv
+      const queryCLI = await new Aioli([{
+        tool: "mummer4",
+        program: "nucmer",
+        version: "4.0.0rc1",
+        urlPrefix: urlPrefix
+      }]);
+
+      await queryCLI.mount([
+        { name: 'ref.fasta', data: refFile.content },
+        { name: `query_${i}.fasta`, data: queryFiles[i].content }
+      ]);
 
       // Run nucmer: -p sets output prefix, -c sets minimum cluster length
-      await CLI.exec('nucmer', ['-p', 'output', 'ref.fasta', `query_${i}.fasta`]);
+      await queryCLI.exec('nucmer', ['-p', 'output', 'ref.fasta', `query_${i}.fasta`]);
 
       // Read the resulting delta file
       let deltaText = '';
       try {
-        const blobUrl = await CLI.download('output.delta');
+        const blobUrl = await queryCLI.download('output.delta');
         const resp    = await fetch(blobUrl);
         deltaText     = await resp.text();
         URL.revokeObjectURL(blobUrl);
