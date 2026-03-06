@@ -818,15 +818,15 @@ document.getElementById('btn-run').addEventListener('click', async () => {
       setProgress(i + 1, totalSteps, `Aligning ${queryFiles[i].name} with MUMmer4/nucmer… (${i + 1}/${nQueries})`);
 
       // Remove any previous delta output to avoid stale reads
-      try { await CLI.fs.unlink('/output.delta'); } catch (_) {}
+      try { await CLI.fs.unlink('output.delta'); } catch (_) {}
 
       // Run nucmer: -p sets output prefix, -c sets minimum cluster length
-      await CLI.exec('nucmer', ['-p', '/output', '/ref.fasta', `/query_${i}.fasta`]);
+      await CLI.exec('nucmer', ['-p', 'output', 'ref.fasta', `query_${i}.fasta`]);
 
       // Read the resulting delta file
       let deltaText = '';
       try {
-        const blobUrl = await CLI.download('/output.delta');
+        const blobUrl = await CLI.download('output.delta');
         const resp    = await fetch(blobUrl);
         deltaText     = await resp.text();
         URL.revokeObjectURL(blobUrl);
