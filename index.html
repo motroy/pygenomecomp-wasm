@@ -828,8 +828,8 @@ document.getElementById('btn-run').addEventListener('click', async () => {
         { name: `query_${i}.fasta`, data: queryFiles[i].content }
       ]);
 
-      // Run nucmer: -p sets output prefix, -c sets minimum cluster length
-      await queryCLI.exec('nucmer', ['-p', 'output', 'ref.fasta', `query_${i}.fasta`]);
+      // Run nucmer: -c 15 -l 10 relaxes exact match requirements for lower identity sequences
+      await queryCLI.exec('nucmer', ['-c', '15', '-l', '10', '-p', 'output', 'ref.fasta', `query_${i}.fasta`]);
 
       // Read the resulting delta file
       let deltaText = '';
