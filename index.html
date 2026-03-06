@@ -8,8 +8,11 @@
   <!-- Tailwind CSS (Play CDN) -->
   <script src="https://cdn.tailwindcss.com"></script>
 
-  <!-- Pyodide — Python in WASM -->
+  <!-- Pyodide — Python in WASM (for delta parsing & SVG generation) -->
   <script src="https://cdn.jsdelivr.net/pyodide/v0.27.0/full/pyodide.js"></script>
+
+  <!-- biowasm Aioli — MUMmer4/nucmer in WASM (for sequence alignment) -->
+  <script src="https://cdn.biowasm.com/v3/aioli.js"></script>
 
   <style>
     :root {
@@ -135,11 +138,17 @@
         <p class="text-xs text-blue-200 mt-0.5">Circular genome comparison · Runs entirely in your browser via WebAssembly</p>
       </div>
     </div>
-    <div class="flex items-center gap-3">
-      <span id="pyodide-status" class="flex items-center gap-1.5 text-xs text-blue-200">
-        <span class="pulse-dot inline-block w-2 h-2 rounded-full bg-yellow-400"></span>
-        Loading Python runtime…
-      </span>
+    <div class="flex items-center gap-4 flex-wrap">
+      <div class="flex flex-col gap-0.5">
+        <span id="pyodide-status" class="flex items-center gap-1.5 text-xs text-blue-200">
+          <span class="pulse-dot inline-block w-2 h-2 rounded-full bg-yellow-400"></span>
+          Loading Python runtime…
+        </span>
+        <span id="aioli-status" class="flex items-center gap-1.5 text-xs text-blue-200">
+          <span class="pulse-dot inline-block w-2 h-2 rounded-full bg-yellow-400"></span>
+          Loading MUMmer4…
+        </span>
+      </div>
       <a href="https://github.com/motroy/pygenomecomp" target="_blank" rel="noopener"
          class="flex items-center gap-1.5 text-xs text-blue-200 hover:text-white transition-colors">
         <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
@@ -174,8 +183,9 @@
       </h2>
       <p class="text-sm text-slate-600 leading-relaxed">
         Upload one <strong>reference</strong> and one or more <strong>query</strong> genomes in FASTA format.
-        The tool aligns each query to the reference using a k-mer approach and renders a BRIG-style circular plot.
-        No data ever leaves your browser.
+        Each query is aligned to the reference using <strong>MUMmer4/nucmer</strong> (via
+        <a href="https://biowasm.com" target="_blank" class="text-blue-500 hover:underline">biowasm</a>)
+        and a BRIG-style circular plot is rendered. No data ever leaves your browser.
       </p>
       <button id="btn-load-demo"
               class="mt-3 w-full text-sm bg-gradient-to-r from-cyan-500 to-blue-600 text-white
@@ -453,7 +463,9 @@
 
 <!-- ══════════════════════ FOOTER ══════════════════════ -->
 <footer class="text-center text-xs text-slate-400 py-5 border-t border-slate-200 bg-white">
-  PyGenomeComp Web · powered by <a href="https://pyodide.org" class="text-blue-500 hover:underline">Pyodide</a>
+  PyGenomeComp Web · aligned by <a href="https://mummer4.github.io" class="text-blue-500 hover:underline">MUMmer4/nucmer</a>
+  via <a href="https://biowasm.com" class="text-blue-500 hover:underline">biowasm</a>
+  · powered by <a href="https://pyodide.org" class="text-blue-500 hover:underline">Pyodide</a>
   · <a href="https://github.com/motroy/pygenomecomp" class="text-blue-500 hover:underline">Source on GitHub</a>
   · Data never leaves your browser
 </footer>
@@ -528,13 +540,15 @@ ref_contig_1\tProkka\ttRNA\t680\t720\t.\t+\t.\tID=trna01;product=tRNA-Met
 /* ------------------------------------------------------------------ */
 /* State                                                                */
 /* ------------------------------------------------------------------ */
-let pyodide        = null;
-let pyReady        = false;
-let refFile        = null;   // { name, content }
-let queryFiles     = [];     // [{ name, content }, ...]
-let annotFile      = null;   // { name, content } | null
-let svgContent     = '';
-let currentScale   = 1;
+let pyodide      = null;
+let pyReady      = false;
+let CLI          = null;   // Aioli instance
+let aioliReady   = false;
+let refFile      = null;   // { name, content }
+let queryFiles   = [];     // [{ name, content }, ...]
+let annotFile    = null;   // { name, content } | null
+let svgContent   = '';
+let currentScale = 1;
 let panX = 0, panY = 0;
 let isPanning = false, panStartX = 0, panStartY = 0;
 
@@ -559,9 +573,30 @@ async function initPyodide() {
     updateRunButton();
   } catch (err) {
     const statusEl = document.getElementById('pyodide-status');
-    statusEl.innerHTML = `<span class="inline-block w-2 h-2 rounded-full bg-red-400"></span> Failed to load`;
+    statusEl.innerHTML = `<span class="inline-block w-2 h-2 rounded-full bg-red-400"></span> Python failed`;
     console.error('Pyodide init error:', err);
     showError('Failed to load Python runtime: ' + err.message);
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Aioli / biowasm bootstrap                                            */
+/* ------------------------------------------------------------------ */
+async function initAioli() {
+  try {
+    const statusEl = document.getElementById('aioli-status');
+    statusEl.innerHTML = `<span class="pulse-dot inline-block w-2 h-2 rounded-full bg-yellow-400"></span> Loading MUMmer4…`;
+
+    CLI = await new Aioli(["mummer4/nucmer/4.0.0rc1"]);
+
+    aioliReady = true;
+    statusEl.innerHTML = `<span class="inline-block w-2 h-2 rounded-full bg-green-400"></span> MUMmer4 ready`;
+    updateRunButton();
+  } catch (err) {
+    const statusEl = document.getElementById('aioli-status');
+    statusEl.innerHTML = `<span class="inline-block w-2 h-2 rounded-full bg-red-400"></span> MUMmer4 failed`;
+    console.error('Aioli init error:', err);
+    showError('Failed to load MUMmer4: ' + err.message);
   }
 }
 
@@ -717,7 +752,7 @@ document.getElementById('settings-toggle').addEventListener('click', () => {
 /* ------------------------------------------------------------------ */
 function updateRunButton() {
   const btn = document.getElementById('btn-run');
-  btn.disabled = !(pyReady && refFile && queryFiles.length > 0);
+  btn.disabled = !(pyReady && aioliReady && refFile && queryFiles.length > 0);
 }
 
 /* ------------------------------------------------------------------ */
@@ -756,26 +791,55 @@ document.getElementById('btn-run').addEventListener('click', async () => {
   const minIdentity = parseFloat(document.getElementById('min-identity').value);
   const minLength   = parseInt(document.getElementById('min-length').value, 10);
   const showGenes   = document.getElementById('show-gene-names').checked;
+  const nQueries    = queryFiles.length;
+  const totalSteps  = nQueries + 4;
 
   try {
-    setProgress(0, 10, 'Preparing…');
+    // ── Step 1: Mount all FASTA files to Aioli virtual FS ──────────────
+    setProgress(0, totalSteps, 'Mounting sequences…');
+    const filesToMount = [
+      { name: 'ref.fasta', data: refFile.content },
+      ...queryFiles.map((q, i) => ({ name: `query_${i}.fasta`, data: q.content }))
+    ];
+    await CLI.mount(filesToMount);
 
-    // Build Python-callable progress callback
-    const progressCb = pyodide.globals.get('run_comparison')
-      ? null  // will be set via globals later
-      : null;
+    // ── Steps 2…N+1: Run nucmer for each query ─────────────────────────
+    const deltaTexts = [];
+    for (let i = 0; i < nQueries; i++) {
+      setProgress(i + 1, totalSteps, `Aligning ${queryFiles[i].name} with MUMmer4/nucmer… (${i + 1}/${nQueries})`);
 
-    // Pass data to Python via globals
-    pyodide.globals.set('_ref_text',        refFile.content);
-    pyodide.globals.set('_query_texts',     pyodide.toPy(queryFiles.map(q => q.content)));
-    pyodide.globals.set('_query_names',     pyodide.toPy(queryFiles.map(q => q.name)));
-    pyodide.globals.set('_annot_text',      annotFile ? annotFile.content : '');
-    pyodide.globals.set('_min_identity',    minIdentity);
-    pyodide.globals.set('_min_length',      minLength);
-    pyodide.globals.set('_show_gene_names', showGenes);
+      // Remove any previous delta output to avoid stale reads
+      try { await CLI.fs.unlink('/output.delta'); } catch (_) {}
 
-    // Progress callback accessible from Python
-    const updateProgress = (step, total, msg) => setProgress(step, total, msg);
+      // Run nucmer: -p sets output prefix, -c sets minimum cluster length
+      await CLI.exec('nucmer', ['-p', '/output', '/ref.fasta', `/query_${i}.fasta`]);
+
+      // Read the resulting delta file
+      let deltaText = '';
+      try {
+        const blobUrl = await CLI.download('/output.delta');
+        const resp    = await fetch(blobUrl);
+        deltaText     = await resp.text();
+        URL.revokeObjectURL(blobUrl);
+      } catch (e) {
+        console.warn(`nucmer produced no output for query ${i} (${queryFiles[i].name}):`, e);
+      }
+      deltaTexts.push(deltaText);
+    }
+
+    // ── Step N+2: Pass delta data to Python for processing & plotting ───
+    setProgress(nQueries + 1, totalSteps, 'Processing alignments…');
+
+    pyodide.globals.set('_ref_text',          refFile.content);
+    pyodide.globals.set('_query_delta_texts', pyodide.toPy(deltaTexts));
+    pyodide.globals.set('_query_names',       pyodide.toPy(queryFiles.map(q => q.name)));
+    pyodide.globals.set('_annot_text',        annotFile ? annotFile.content : '');
+    pyodide.globals.set('_min_identity',      minIdentity);
+    pyodide.globals.set('_min_length',        minLength);
+    pyodide.globals.set('_show_gene_names',   showGenes);
+
+    const updateProgress = (step, total, msg) =>
+      setProgress(nQueries + 1 + step, nQueries + 1 + total, msg);
     pyodide.globals.set('_js_progress', updateProgress);
 
     const pythonRunner = `
@@ -787,7 +851,7 @@ def _run():
     try:
         return run_comparison(
             reference_fasta_text = _ref_text,
-            query_fasta_texts    = list(_query_texts),
+            query_delta_texts    = list(_query_delta_texts),
             query_file_names     = list(_query_names),
             annotation_text      = _annot_text if _annot_text.strip() else None,
             min_identity         = float(_min_identity),
@@ -807,12 +871,11 @@ _result_svg = _run()
     svgContent = svg;
     displaySVG(svg);
 
-    // Stats from SVG inspection (count <path elements as proxy for segments)
-    document.getElementById('stat-ref').textContent      = refFile.name;
-    document.getElementById('stat-queries').textContent  = queryFiles.length + ' genome(s)';
+    document.getElementById('stat-ref').textContent     = refFile.name;
+    document.getElementById('stat-queries').textContent = queryFiles.length + ' genome(s)';
     document.getElementById('stats-bar').classList.remove('hidden');
 
-    setProgress(10, 10, '✓ Complete!');
+    setProgress(totalSteps, totalSteps, '✓ Complete!');
     const spinner = document.getElementById('prog-spinner');
     spinner.classList.remove('spinner');
     spinner.innerHTML = '<path d="M20 6L9 17l-5-5" stroke="#22c55e" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>';
@@ -944,9 +1007,10 @@ document.getElementById('btn-load-demo').addEventListener('click', () => {
 });
 
 /* ------------------------------------------------------------------ */
-/* Boot                                                                 */
+/* Boot — initialize both engines in parallel                          */
 /* ------------------------------------------------------------------ */
 initPyodide();
+initAioli();
 renderRefChips();
 renderQueryChips();
 renderAnnotChips();

@@ -1,7 +1,9 @@
 """
 PyGenomeComp WASM - Genome Comparison Tool
 Self-contained Python module for Pyodide (browser WASM runtime).
-No external dependencies required.
+Alignments are performed by MUMmer4/nucmer via biowasm (in JavaScript),
+and the resulting delta files are parsed here for visualization.
+No external Python dependencies required.
 """
 import math
 import json
@@ -71,143 +73,125 @@ def parse_gff3(text, target_seq_id):
 
 
 # ============================================================
-# K-mer Aligner (replaces BLAST)
+# MUMmer4 / nucmer Delta File Parser
 # ============================================================
 
-_COMPLEMENT = str.maketrans('ACGTNacgtn', 'TGCANtgcan')
-
-
-def reverse_complement(seq):
-    return seq.translate(_COMPLEMENT)[::-1]
-
-
-def _build_kmer_index(seq, k):
-    """Build k-mer position index: kmer -> list of 0-based start positions."""
-    idx = {}
-    for i in range(len(seq) - k + 1):
-        kmer = seq[i:i+k]
-        if 'N' in kmer:
-            continue
-        if kmer not in idx:
-            idx[kmer] = []
-        idx[kmer].append(i)
-    return idx
-
-
-def _chain_diagonal(sorted_qpos, k, gap_tolerance):
-    """Merge sorted k-mer hit positions on one diagonal into (qstart, qend) chains."""
-    chains = []
-    for qpos in sorted_qpos:
-        if chains and qpos <= chains[-1][1] + gap_tolerance:
-            chains[-1] = (chains[-1][0], max(chains[-1][1], qpos + k))
-        else:
-            chains.append((qpos, qpos + k))
-    return chains
-
-
-def _kmer_align_strand(query_seq, query_name, ref_seq, ref_name,
-                       ref_index, k, min_length, min_identity,
-                       gap_tolerance=100, max_kmer_freq=50):
+def parse_nucmer_delta(delta_text, query_file_name, query_index,
+                       min_identity=70.0, min_length=100):
     """
-    Find alignments between query_seq (forward) and ref_seq (forward).
-    Returns list of hit dicts in BLAST tabular format (1-based coords).
+    Parse a nucmer delta file into hit dicts compatible with generate_svg().
+
+    Delta format (per alignment block):
+        /path/ref.fasta /path/query.fasta
+        NUCMER
+        >ref_name query_name ref_len query_len
+        s1 e1 s2 e2 errors similarity_errors stop_errors
+        [indel offsets — positive = insertion in ref, negative = insertion in query]
+        0
+        [more alignment records ...]
+
+    Coordinate notes:
+        - s1/e1: 1-based reference coordinates
+        - s2/e2: 1-based query coordinates (e2 < s2 means reverse-complement alignment)
+        - errors: total number of errors (substitutions + indels)
+
+    Returns list of hit dicts.
     """
-    qlen = len(query_seq)
-    rlen = len(ref_seq)
-
-    # Collect k-mer matches grouped by diagonal (rpos - qpos)
-    diagonals = {}
-    for qi in range(qlen - k + 1):
-        kmer = query_seq[qi:qi+k]
-        if 'N' in kmer:
-            continue
-        rpositions = ref_index.get(kmer)
-        if not rpositions or len(rpositions) > max_kmer_freq:
-            continue
-        for ri in rpositions:
-            diag = ri - qi
-            if diag not in diagonals:
-                diagonals[diag] = []
-            diagonals[diag].append(qi)
-
+    lines = delta_text.splitlines()
     hits = []
-    for diag, qpositions in diagonals.items():
-        chains = _chain_diagonal(sorted(qpositions), k, gap_tolerance)
-        for qstart, qend in chains:
-            length = qend - qstart
-            if length < min_length:
-                continue
-            rstart = qstart + diag
-            rend = qend + diag
-            if rstart < 0 or rend > rlen or qstart < 0 or qend > qlen:
-                continue
 
-            # Percent identity: character-by-character comparison
-            matches = sum(a == b for a, b in zip(query_seq[qstart:qend], ref_seq[rstart:rend]))
-            pident = matches / length * 100.0
-            if pident < min_identity:
-                continue
+    if len(lines) < 2:
+        return hits
 
-            hits.append({
-                'qseqid': query_name,
-                'sseqid': ref_name,
-                'pident': round(pident, 2),
-                'length': length,
-                'mismatch': length - matches,
-                'gapopen': 0,
-                'qstart': qstart + 1,   # 1-based
-                'qend': qend,           # 1-based inclusive
-                'sstart': rstart + 1,   # 1-based
-                'send': rend,           # 1-based inclusive
-                'evalue': 0.0,
-                'bitscore': round(length * pident / 100.0, 1),
-                'qlen': qlen,
-                'slen': rlen,
-            })
+    # Line 0: file paths; line 1: "NUCMER"
+    i = 2
+
+    current_ref_name   = None
+    current_query_name = None
+    current_ref_len    = 0
+    current_query_len  = 0
+
+    while i < len(lines):
+        line = lines[i].strip()
+        i += 1
+
+        if not line:
+            continue
+
+        if line.startswith('>'):
+            # Sequence-pair header: >ref_name query_name ref_len query_len
+            parts = line[1:].split()
+            if len(parts) >= 4:
+                current_ref_name   = parts[0]
+                current_query_name = parts[1]
+                try:
+                    current_ref_len   = int(parts[2])
+                    current_query_len = int(parts[3])
+                except ValueError:
+                    current_ref_name = None
+            continue
+
+        if current_ref_name is None:
+            continue
+
+        # Alignment record line: s1 e1 s2 e2 errors sim_errors stop_errors
+        parts = line.split()
+        if len(parts) < 7:
+            continue
+        try:
+            s1, e1 = int(parts[0]), int(parts[1])
+            s2, e2 = int(parts[2]), int(parts[3])
+            errors = int(parts[4])
+        except (ValueError, IndexError):
+            continue
+
+        # Skip indel-offset lines until terminating '0'
+        while i < len(lines):
+            inner = lines[i].strip()
+            i += 1
+            if inner == '0':
+                break
+            # Non-zero integers are indel offsets; anything else ends the block
+            try:
+                int(inner)
+            except ValueError:
+                i -= 1  # put non-integer line back for outer loop
+                break
+
+        # Compute metrics
+        ref_aln_len = abs(e1 - s1) + 1
+        if ref_aln_len < min_length:
+            continue
+
+        # Approximate % identity: (aligned_bases - errors) / aligned_bases
+        pident = max(0.0, (ref_aln_len - errors) / ref_aln_len * 100.0)
+        if pident < min_identity:
+            continue
+
+        hits.append({
+            'qseqid':      current_query_name,
+            'sseqid':      current_ref_name,
+            'pident':      round(pident, 2),
+            'length':      ref_aln_len,
+            'mismatch':    errors,
+            'gapopen':     0,
+            'qstart':      s2,
+            'qend':        e2,
+            'sstart':      min(s1, e1),   # reference coords always low→high
+            'send':        max(s1, e1),
+            'evalue':      0.0,
+            'bitscore':    round(ref_aln_len * pident / 100.0, 1),
+            'qlen':        current_query_len,
+            'slen':        current_ref_len,
+            'query_index': query_index,
+        })
+
     return hits
 
 
-def align_query_to_reference(query_records, ref_record, k=11,
-                              min_identity=70.0, min_length=100,
-                              gap_tolerance=100, max_kmer_freq=50):
-    """
-    Align all contigs of a query genome to the reference using k-mer approach.
-    Searches both forward and reverse complement strands of the query.
-    Returns list of hit dicts.
-    """
-    ref_name = ref_record['name']
-    ref_seq = ref_record['seq']
-    rlen = len(ref_seq)
-    ref_index = _build_kmer_index(ref_seq, k)
-
-    all_hits = []
-    for qrec in query_records:
-        qseq = qrec['seq']
-        qname = qrec['name']
-        qlen = len(qseq)
-
-        # Forward strand
-        fwd = _kmer_align_strand(qseq, qname, ref_seq, ref_name,
-                                 ref_index, k, min_length, min_identity,
-                                 gap_tolerance, max_kmer_freq)
-        all_hits.extend(fwd)
-
-        # Reverse complement
-        rc_seq = reverse_complement(qseq)
-        rev = _kmer_align_strand(rc_seq, qname, ref_seq, ref_name,
-                                 ref_index, k, min_length, min_identity,
-                                 gap_tolerance, max_kmer_freq)
-        # Convert RC query coordinates back to original, swap sstart/send for rev strand
-        for hit in rev:
-            rc_qs0 = hit['qstart'] - 1  # 0-based
-            rc_qe0 = hit['qend']        # exclusive
-            hit['qstart'] = qlen - rc_qe0 + 1
-            hit['qend']   = qlen - rc_qs0
-            hit['sstart'], hit['send'] = hit['send'], hit['sstart']
-        all_hits.extend(rev)
-
-    return all_hits
-
+# ============================================================
+# Insertion Site Detection
+# ============================================================
 
 def find_insertion_sites(hits, max_ref_gap=50):
     """Identifies insertion sites where query has sequence absent from reference."""
@@ -404,7 +388,7 @@ def generate_svg(blast_hits, annotations, reference_length, query_names,
         out.append(f'<circle cx="{CENTER_X}" cy="{CENTER_Y}" r="{ir:.1f}" fill="none" stroke="#ddd" stroke-width="0.5"/>\n')
         out.append(f'<circle cx="{CENTER_X}" cy="{CENTER_Y}" r="{or_:.1f}" fill="none" stroke="#ddd" stroke-width="0.5"/>\n')
 
-    # --- BLAST hit segments ---
+    # --- Alignment hit segments ---
     for hit in blast_hits:
         qi  = hit['query_index']
         ir  = BLAST_HIT_BASE_RADIUS + qi * (BLAST_RING_THICKNESS + BLAST_RING_SPACING)
@@ -527,22 +511,25 @@ def generate_svg(blast_hits, annotations, reference_length, query_names,
 # Main Pipeline
 # ============================================================
 
-def run_comparison(reference_fasta_text, query_fasta_texts, query_file_names,
+def run_comparison(reference_fasta_text, query_delta_texts, query_file_names,
                    annotation_text=None,
                    min_identity=70.0, min_length=100,
                    show_gene_names=False,
                    progress_callback=None):
     """
-    Run genome comparison pipeline entirely in Python (no external tools).
+    Run genome comparison pipeline using pre-computed MUMmer4/nucmer alignments.
+
+    Alignments are performed in JavaScript via biowasm/Aioli before this
+    function is called. The resulting nucmer delta files are parsed here.
 
     Args:
-        reference_fasta_text : str  – reference genome in FASTA format
-        query_fasta_texts    : list[str] – query genomes in FASTA format
+        reference_fasta_text : str       – reference genome in FASTA format
+        query_delta_texts    : list[str] – nucmer .delta outputs (one per query)
         query_file_names     : list[str] – display names for query files
-        annotation_text      : str | None – optional GFF3 annotation text
-        min_identity         : float – minimum % identity (default 70)
-        min_length           : int   – minimum alignment length (default 100)
-        show_gene_names      : bool  – annotate gene names on the plot
+        annotation_text      : str|None  – optional GFF3 annotation text
+        min_identity         : float     – minimum % identity (default 70)
+        min_length           : int       – minimum alignment length bp (default 100)
+        show_gene_names      : bool      – annotate gene names on the plot
         progress_callback    : callable(step, total, message) | None
 
     Returns:
@@ -552,10 +539,10 @@ def run_comparison(reference_fasta_text, query_fasta_texts, query_file_names,
         if progress_callback:
             progress_callback(step, total, msg)
 
-    n_queries = len(query_fasta_texts)
-    total_steps = 4 + n_queries
+    n_queries   = len(query_delta_texts)
+    total_steps = 3 + n_queries
 
-    # 1. Parse reference
+    # 1. Parse reference (for name and length only — alignment done externally)
     _prog(0, total_steps, 'Parsing reference genome…')
     ref_records = parse_fasta(reference_fasta_text)
     if not ref_records:
@@ -565,53 +552,20 @@ def run_comparison(reference_fasta_text, query_fasta_texts, query_file_names,
     ref_len    = len(ref_record['seq'])
     _prog(1, total_steps, f'Reference: {ref_name} ({ref_len:,} bp)')
 
-    # 2. Build k-mer index
-    _prog(2, total_steps, 'Building sequence index…')
-    ref_index = _build_kmer_index(ref_record['seq'], k=11)
+    # 2. Parse nucmer delta files into hit dicts
+    all_hits       = []
+    all_insertions = []
 
-    # 3. Align each query
-    all_hits        = []
-    all_insertions  = []
-
-    for i, (qtext, qname) in enumerate(zip(query_fasta_texts, query_file_names)):
-        _prog(3 + i, total_steps, f'Aligning {qname} ({i+1}/{n_queries})…')
-        qrecords = parse_fasta(qtext)
-        if not qrecords:
-            continue
-
-        query_hits = []
-        for qrec in qrecords:
-            qseq = qrec['seq']
-            qlen = len(qseq)
-
-            # Forward
-            fwd = _kmer_align_strand(
-                qseq, qrec['name'], ref_record['seq'], ref_name,
-                ref_index, k=11,
-                min_length=min_length, min_identity=min_identity)
-            query_hits.extend(fwd)
-
-            # Reverse complement
-            rc_seq = reverse_complement(qseq)
-            rev = _kmer_align_strand(
-                rc_seq, qrec['name'], ref_record['seq'], ref_name,
-                ref_index, k=11,
-                min_length=min_length, min_identity=min_identity)
-            for hit in rev:
-                rc_qs0 = hit['qstart'] - 1
-                rc_qe0 = hit['qend']
-                hit['qstart'] = qlen - rc_qe0 + 1
-                hit['qend']   = qlen - rc_qs0
-                hit['sstart'], hit['send'] = hit['send'], hit['sstart']
-            query_hits.extend(rev)
-
-        for hit in query_hits:
-            hit['query_index'] = i
+    for i, (delta_text, qname) in enumerate(zip(query_delta_texts, query_file_names)):
+        _prog(2 + i, total_steps, f'Processing alignments for {qname} ({i+1}/{n_queries})…')
+        query_hits = parse_nucmer_delta(
+            delta_text, qname, i, min_identity, min_length
+        )
         all_hits.extend(query_hits)
         all_insertions.extend(find_insertion_sites(query_hits))
 
-    # 4. Parse annotations
-    _prog(3 + n_queries, total_steps, 'Parsing annotations…')
+    # 3. Parse annotations
+    _prog(2 + n_queries, total_steps, 'Parsing annotations…')
     annotations = None
     if annotation_text and annotation_text.strip():
         try:
@@ -619,8 +573,8 @@ def run_comparison(reference_fasta_text, query_fasta_texts, query_file_names,
         except Exception as e:
             print(f'Warning: annotation parse error: {e}')
 
-    # 5. Generate plot
-    _prog(4 + n_queries - 1, total_steps, 'Generating circular plot…')
+    # 4. Generate plot
+    _prog(3 + n_queries - 1, total_steps, 'Generating circular plot…')
     svg = generate_svg(
         blast_hits=all_hits,
         annotations=annotations,
