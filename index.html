@@ -397,6 +397,19 @@
     <div id="result-toolbar"
          class="hidden bg-white rounded-xl shadow-sm border border-slate-200 p-3
                 flex items-center gap-2 flex-wrap">
+      <!-- View-mode toggle -->
+      <span class="text-xs font-semibold text-slate-500 uppercase tracking-wider mr-1">Mode</span>
+      <div class="flex items-center bg-slate-100 rounded-lg p-1 gap-1">
+        <button id="btn-view-circular" onclick="setViewMode('circular')"
+                class="text-xs px-3 py-1 rounded-md bg-white shadow-sm font-semibold text-slate-700 transition-all">
+          Circular
+        </button>
+        <button id="btn-view-linear" onclick="setViewMode('linear')"
+                class="text-xs px-3 py-1 rounded-md font-medium text-slate-500 hover:text-slate-700 transition-all">
+          Linear
+        </button>
+      </div>
+      <div class="w-px h-5 bg-slate-200 mx-1"></div>
       <span class="text-xs font-semibold text-slate-500 uppercase tracking-wider mr-1">View</span>
       <button onclick="zoomBy(1.25)" title="Zoom in"
               class="icon-btn flex items-center gap-1 text-xs bg-slate-100 hover:bg-slate-200
@@ -570,7 +583,10 @@ let aioliReady   = false;
 let refFile      = null;   // { name, content }
 let queryFiles   = [];     // [{ name, content }, ...]
 let annotFile    = null;   // { name, content } | null
-let svgContent   = '';
+let svgContent      = '';
+let svgCircular     = '';   // circular-view SVG (cached)
+let svgLinear       = '';   // linear-view SVG (cached)
+let currentViewMode = 'circular';  // 'circular' | 'linear'
 let currentScale = 1;
 let panX = 0, panY = 0;
 let isPanning = false, panStartX = 0, panStartY = 0;
@@ -847,7 +863,9 @@ def _run():
     except Exception as e:
         raise RuntimeError(str(e) + "\\n" + traceback.format_exc())
 
-_result_svg = _run()
+_result_svgs    = _run()
+_result_circular = _result_svgs[0]
+_result_linear   = _result_svgs[1]
 `;
 
 async function runPythonVisualization(preserveView = true) {
@@ -872,8 +890,10 @@ async function runPythonVisualization(preserveView = true) {
     pyodide.globals.set('_js_progress',           () => {});
 
     await pyodide.runPythonAsync(PYTHON_RUNNER);
-    const svg = pyodide.globals.get('_result_svg');
-    svgContent = svg;
+    svgCircular = pyodide.globals.get('_result_circular');
+    svgLinear   = pyodide.globals.get('_result_linear');
+    const svg   = currentViewMode === 'linear' ? svgLinear : svgCircular;
+    svgContent  = svg;
     displaySVG(svg, preserveView);
   } finally {
     isVisualizationRunning = false;
@@ -902,8 +922,10 @@ document.getElementById('btn-run').addEventListener('click', async () => {
   // Cancel any pending filter-replot
   clearTimeout(replotTimer);
   isVisualizationRunning = false;
-  // Reset view for a fresh run
+  // Reset view and view-mode for a fresh run
   currentScale = 1; panX = 0; panY = 0;
+  currentViewMode = 'circular';
+  setViewMode('circular');   // reset toggle button state (SVGs not ready yet, safe no-op)
 
   const nQueries    = queryFiles.length;
   const totalSteps  = nQueries + 3;
@@ -1067,6 +1089,27 @@ vp.addEventListener('touchmove', e => {
 }, { passive: false });
 
 /* ------------------------------------------------------------------ */
+/* View-mode toggle                                                     */
+/* ------------------------------------------------------------------ */
+function setViewMode(mode) {
+  currentViewMode = mode;
+
+  // Update toggle-button visual state
+  const btnC = document.getElementById('btn-view-circular');
+  const btnL = document.getElementById('btn-view-linear');
+  const activeClass   = 'text-xs px-3 py-1 rounded-md bg-white shadow-sm font-semibold text-slate-700 transition-all';
+  const inactiveClass = 'text-xs px-3 py-1 rounded-md font-medium text-slate-500 hover:text-slate-700 transition-all';
+  if (btnC) btnC.className = mode === 'circular' ? activeClass : inactiveClass;
+  if (btnL) btnL.className = mode === 'linear'   ? activeClass : inactiveClass;
+
+  // Display the chosen SVG (if available)
+  const svg = mode === 'linear' ? svgLinear : svgCircular;
+  if (!svg) return;
+  svgContent = svg;
+  displaySVG(svg, false);   // reset pan/zoom when switching views
+}
+
+/* ------------------------------------------------------------------ */
 /* Download SVG                                                         */
 /* ------------------------------------------------------------------ */
 function downloadSVG() {
@@ -1074,7 +1117,7 @@ function downloadSVG() {
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement('a');
   a.href     = url;
-  a.download = 'genome_comparison.svg';
+  a.download = `genome_comparison_${currentViewMode}.svg`;
   a.click();
   URL.revokeObjectURL(url);
 }
