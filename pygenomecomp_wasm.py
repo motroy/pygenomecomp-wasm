@@ -286,6 +286,14 @@ def _arc_path(cx, cy, ri, ro, s, e):
             f"A {ri:.2f} {ri:.2f} 0 {large} 0 {xsi:.2f} {ysi:.2f} Z")
 
 def _arc(cx, cy, ri, ro, s, e, fill, opacity=1.0, stroke='none', sw=0):
+    # SVG cannot render an arc whose start and end points coincide (degenerate arc).
+    # This happens for near-full-circle spans (e.g. a query hit covering the entire
+    # reference), where er - sr approaches 2π.  Split such arcs into two halves,
+    # mirroring the same technique used by _full_ring().
+    if abs(e - s) > 2 * math.pi - 0.001:
+        mid = (s + e) / 2
+        return (_arc(cx, cy, ri, ro, s, mid, fill, opacity, stroke, sw) +
+                _arc(cx, cy, ri, ro, mid, e, fill, opacity, stroke, sw))
     p = _arc_path(cx, cy, ri, ro, s, e)
     return f'<path d="{p}" fill="{fill}" stroke="{stroke}" stroke-width="{sw}" opacity="{opacity:.2f}"/>\n'
 
