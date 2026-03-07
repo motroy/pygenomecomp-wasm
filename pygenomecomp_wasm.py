@@ -548,6 +548,9 @@ def generate_linear_svg(blast_hits, annotations, reference_length, reference_nam
         if i not in query_lengths:
             query_lengths[i] = reference_length  # fallback
 
+    # Shared scale: all genomes use the same pixels-per-bp ratio so lengths are comparable
+    max_len = max(reference_length, max(query_lengths.values(), default=reference_length))
+
     # ── Layout constants ──────────────────────────────────────────────
     W           = 1200
     LEFT        = 150   # reserved for sequence labels
@@ -564,12 +567,12 @@ def generate_linear_svg(blast_hits, annotations, reference_length, reference_nam
 
     # ── Coordinate helpers ────────────────────────────────────────────
     def ref_x(pos):
-        """Reference position (1-based bp) → SVG x."""
-        return LEFT + (pos - 1) / reference_length * CONTENT_W
+        """Reference position (1-based bp) → SVG x (shared scale)."""
+        return LEFT + (pos - 1) / max_len * CONTENT_W
 
     def qx(pos, qi):
-        """Query position (1-based bp) → SVG x, scaled to that query's display length."""
-        return LEFT + (pos - 1) / query_lengths.get(qi, 1) * CONTENT_W
+        """Query position (1-based bp) → SVG x (same shared scale)."""
+        return LEFT + (pos - 1) / max_len * CONTENT_W
 
     def track_cy(i):
         """Centre-y of track i (0 = reference)."""
@@ -616,18 +619,20 @@ def generate_linear_svg(blast_hits, annotations, reference_length, reference_nam
             f'fill="{fill}" opacity="{RIBBON_OP:.2f}"/>\n'
         )
 
-    # ── Track backbones ────────────────────────────────────────────────
-    ref_cy = track_cy(0)
+    # ── Track backbones (width proportional to actual genome length) ──
+    ref_cy   = track_cy(0)
+    ref_w    = reference_length / max_len * CONTENT_W
     out.append(
         f'<rect x="{LEFT:.1f}" y="{ref_cy - TRACK_H / 2:.1f}" '
-        f'width="{CONTENT_W:.1f}" height="{TRACK_H:.1f}" '
+        f'width="{ref_w:.1f}" height="{TRACK_H:.1f}" '
         f'fill="{LINEAR_BACKBONE_COLOR}" rx="3"/>\n'
     )
     for i in range(n_queries):
-        cy = track_cy(i + 1)
+        cy  = track_cy(i + 1)
+        qw  = query_lengths.get(i, reference_length) / max_len * CONTENT_W
         out.append(
             f'<rect x="{LEFT:.1f}" y="{cy - TRACK_H / 2:.1f}" '
-            f'width="{CONTENT_W:.1f}" height="{TRACK_H:.1f}" '
+            f'width="{qw:.1f}" height="{TRACK_H:.1f}" '
             f'fill="{LINEAR_BACKBONE_COLOR}" rx="3"/>\n'
         )
 
@@ -695,7 +700,7 @@ def generate_linear_svg(blast_hits, annotations, reference_length, reference_nam
             f'{_esc(disp_name)}</text>\n'
         )
 
-    # ── Reference scale ticks ─────────────────────────────────────────
+    # ── Scale ticks (shared scale, spans max_len) ─────────────────────
     scale_y = ref_cy + TRACK_H / 2 + 15
     out.append(
         f'<line x1="{LEFT:.1f}" y1="{scale_y:.1f}" '
@@ -704,10 +709,10 @@ def generate_linear_svg(blast_hits, annotations, reference_length, reference_nam
     )
     for t in range(11):
         tx  = LEFT + t / 10 * CONTENT_W
-        pos = t / 10 * reference_length
-        if   reference_length > 2_000_000: lbl = f'{pos/1e6:.1f} Mb'
-        elif reference_length > 2000:      lbl = f'{pos/1e3:.0f} kb'
-        else:                              lbl = f'{int(pos)} bp'
+        pos = t / 10 * max_len
+        if   max_len > 2_000_000: lbl = f'{pos/1e6:.1f} Mb'
+        elif max_len > 2000:      lbl = f'{pos/1e3:.0f} kb'
+        else:                     lbl = f'{int(pos)} bp'
         out.append(
             f'<line x1="{tx:.1f}" y1="{scale_y:.1f}" '
             f'x2="{tx:.1f}" y2="{scale_y + 4:.1f}" '
@@ -777,6 +782,9 @@ def generate_alignment_svg(blast_hits, annotations, reference_length, reference_
         if i not in query_lengths:
             query_lengths[i] = reference_length
 
+    # Shared scale: all genomes use the same pixels-per-bp ratio
+    max_len = max(reference_length, max(query_lengths.values(), default=reference_length))
+
     # ── Layout constants ──────────────────────────────────────────────
     W            = 1200
     LEFT         = 160      # reserved for sequence labels
@@ -801,12 +809,12 @@ def generate_alignment_svg(blast_hits, annotations, reference_length, reference_
          + max(0, n_queries - 1) * (section_h + SECTION_SEP)
          + 20)
 
-    # ── Coordinate helpers ────────────────────────────────────────────
+    # ── Coordinate helpers (shared scale) ────────────────────────────
     def ref_x(pos):
-        return LEFT + (pos - 1) / reference_length * CONTENT_W
+        return LEFT + (pos - 1) / max_len * CONTENT_W
 
     def qx(pos, qi):
-        return LEFT + (pos - 1) / max(query_lengths.get(qi, 1), 1) * CONTENT_W
+        return LEFT + (pos - 1) / max_len * CONTENT_W
 
     def section_top(qi):
         if qi == 0:
@@ -880,10 +888,11 @@ def generate_alignment_svg(blast_hits, annotations, reference_length, reference_
                 f'fill="{fill}" opacity="{RIBBON_OP:.2f}"/>\n'
             )
 
-        # ── Reference backbone ────────────────────────────────────────
+        # ── Reference backbone (width proportional to actual length) ──
+        ref_w = reference_length / max_len * CONTENT_W
         out.append(
             f'<rect x="{LEFT:.1f}" y="{ref_cy - TRACK_H/2:.1f}" '
-            f'width="{CONTENT_W:.1f}" height="{TRACK_H:.1f}" '
+            f'width="{ref_w:.1f}" height="{TRACK_H:.1f}" '
             f'fill="{LINEAR_BACKBONE_COLOR}" rx="3"/>\n'
         )
 
@@ -936,7 +945,7 @@ def generate_alignment_svg(blast_hits, annotations, reference_length, reference_
                             f'{_esc(gname)}</text>\n'
                         )
 
-        # ── Scale ticks (first section only, below reference) ─────────
+        # ── Scale ticks (first section only, shared scale spans max_len)
         if qi == 0:
             scale_y = ref_cy + TRACK_H / 2 + 6
             out.append(
@@ -946,10 +955,10 @@ def generate_alignment_svg(blast_hits, annotations, reference_length, reference_
             )
             for t in range(11):
                 tx  = LEFT + t / 10 * CONTENT_W
-                pos = t / 10 * reference_length
-                if   reference_length > 2_000_000: lbl = f'{pos/1e6:.1f} Mb'
-                elif reference_length > 2000:      lbl = f'{pos/1e3:.0f} kb'
-                else:                              lbl = f'{int(pos)} bp'
+                pos = t / 10 * max_len
+                if   max_len > 2_000_000: lbl = f'{pos/1e6:.1f} Mb'
+                elif max_len > 2000:      lbl = f'{pos/1e3:.0f} kb'
+                else:                     lbl = f'{int(pos)} bp'
                 out.append(
                     f'<line x1="{tx:.1f}" y1="{scale_y:.1f}" '
                     f'x2="{tx:.1f}" y2="{scale_y + 4:.1f}" '
@@ -962,10 +971,11 @@ def generate_alignment_svg(blast_hits, annotations, reference_length, reference_
                     f'{_esc(lbl)}</text>\n'
                 )
 
-        # ── Query backbone ────────────────────────────────────────────
+        # ── Query backbone (width proportional to actual length) ────────
+        qw = query_lengths.get(qi, reference_length) / max_len * CONTENT_W
         out.append(
             f'<rect x="{LEFT:.1f}" y="{qry_cy - TRACK_H/2:.1f}" '
-            f'width="{CONTENT_W:.1f}" height="{TRACK_H:.1f}" '
+            f'width="{qw:.1f}" height="{TRACK_H:.1f}" '
             f'fill="{LINEAR_BACKBONE_COLOR}" rx="3"/>\n'
         )
 
