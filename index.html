@@ -11,7 +11,7 @@
   <!-- Pyodide — Python in WASM (for delta parsing & SVG generation) -->
   <script src="https://cdn.jsdelivr.net/pyodide/v0.27.0/full/pyodide.js"></script>
 
-  <!-- biowasm Aioli — MUMmer4/nucmer in WASM (for sequence alignment) -->
+  <!-- biowasm Aioli — lastz in WASM (for sequence alignment) -->
   <script src="https://cdn.jsdelivr.net/npm/@biowasm/aioli@3.2.1/dist/aioli.js"></script>
 
   <style>
@@ -146,7 +146,7 @@
         </span>
         <span id="aioli-status" class="flex items-center gap-1.5 text-xs text-blue-200">
           <span class="pulse-dot inline-block w-2 h-2 rounded-full bg-yellow-400"></span>
-          Loading MUMmer4…
+          Loading lastz…
         </span>
       </div>
       <a href="https://github.com/motroy/pygenomecomp" target="_blank" rel="noopener"
@@ -183,7 +183,7 @@
       </h2>
       <p class="text-sm text-slate-600 leading-relaxed">
         Upload one <strong>reference</strong> and one or more <strong>query</strong> genomes in FASTA format.
-        Each query is aligned to the reference using <strong>MUMmer4/nucmer</strong> (via
+        Each query is aligned to the reference using <strong>lastz</strong> (via
         <a href="https://biowasm.com" target="_blank" class="text-blue-500 hover:underline">biowasm</a>)
         and a BRIG-style circular plot is rendered. No data ever leaves your browser.
       </p>
@@ -304,6 +304,19 @@
             <span id="identity-val" class="text-xs font-bold text-blue-600">70%</span>
           </div>
           <input type="range" id="min-identity" min="50" max="100" value="70" step="1"
+                 class="w-full h-2 rounded-lg appearance-none bg-slate-200 accent-blue-600"/>
+        </div>
+
+        <!-- Min coverage -->
+        <div>
+          <div class="flex justify-between mb-1">
+            <label class="text-xs font-semibold text-slate-500 uppercase tracking-wider"
+                   data-tip="Minimum % coverage of the query alignment to include">
+              Min Coverage
+            </label>
+            <span id="coverage-val" class="text-xs font-bold text-blue-600">0%</span>
+          </div>
+          <input type="range" id="min-coverage" min="0" max="100" value="0" step="1"
                  class="w-full h-2 rounded-lg appearance-none bg-slate-200 accent-blue-600"/>
         </div>
 
@@ -463,7 +476,7 @@
 
 <!-- ══════════════════════ FOOTER ══════════════════════ -->
 <footer class="text-center text-xs text-slate-400 py-5 border-t border-slate-200 bg-white">
-  PyGenomeComp Web · aligned by <a href="https://mummer4.github.io" class="text-blue-500 hover:underline">MUMmer4/nucmer</a>
+  PyGenomeComp Web · aligned by <a href="https://github.com/lastz/lastz" class="text-blue-500 hover:underline">lastz</a>
   via <a href="https://biowasm.com" class="text-blue-500 hover:underline">biowasm</a>
   · powered by <a href="https://pyodide.org" class="text-blue-500 hover:underline">Pyodide</a>
   · <a href="https://github.com/motroy/pygenomecomp" class="text-blue-500 hover:underline">Source on GitHub</a>
@@ -585,27 +598,27 @@ async function initPyodide() {
 async function initAioli() {
   try {
     const statusEl = document.getElementById('aioli-status');
-    statusEl.innerHTML = `<span class="pulse-dot inline-block w-2 h-2 rounded-full bg-yellow-400"></span> Loading MUMmer4…`;
+    statusEl.innerHTML = `<span class="pulse-dot inline-block w-2 h-2 rounded-full bg-yellow-400"></span> Loading lastz…`;
 
-    // Calculate absolute URL for the local nucmer scripts to avoid cross-origin importScripts issues
+    // Calculate absolute URL for the local scripts to avoid cross-origin importScripts issues
     const baseUrl = window.location.href.split('?')[0].split('#')[0].replace(/\/[^\/]*$/, '/');
-    const urlPrefix = baseUrl + "mummer4/4.0.0rc1";
+    const urlPrefix = baseUrl + "lastz/1.04.52";
 
     CLI = await new Aioli([{
-      tool: "mummer4",
-      program: "nucmer",
-      version: "4.0.0rc1",
+      tool: "lastz",
+      program: "lastz",
+      version: "1.04.52",
       urlPrefix: urlPrefix
     }]);
 
     aioliReady = true;
-    statusEl.innerHTML = `<span class="inline-block w-2 h-2 rounded-full bg-green-400"></span> MUMmer4 ready`;
+    statusEl.innerHTML = `<span class="inline-block w-2 h-2 rounded-full bg-green-400"></span> lastz ready`;
     updateRunButton();
   } catch (err) {
     const statusEl = document.getElementById('aioli-status');
-    statusEl.innerHTML = `<span class="inline-block w-2 h-2 rounded-full bg-red-400"></span> MUMmer4 failed`;
+    statusEl.innerHTML = `<span class="inline-block w-2 h-2 rounded-full bg-red-400"></span> lastz failed`;
     console.error('Aioli init error:', err);
-    showError('Failed to load MUMmer4: ' + err.message);
+    showError('Failed to load lastz: ' + err.message);
   }
 }
 
@@ -748,6 +761,9 @@ setupDropZone('ann-drop', 'ann-file', false, async files => {
 document.getElementById('min-identity').addEventListener('input', function() {
   document.getElementById('identity-val').textContent = this.value + '%';
 });
+document.getElementById('min-coverage').addEventListener('input', function() {
+  document.getElementById('coverage-val').textContent = this.value + '%';
+});
 
 let settingsOpen = true;
 document.getElementById('settings-toggle').addEventListener('click', () => {
@@ -798,6 +814,7 @@ document.getElementById('btn-run').addEventListener('click', async () => {
   document.getElementById('placeholder').classList.remove('hidden');
 
   const minIdentity = parseFloat(document.getElementById('min-identity').value);
+  const minCoverage = parseFloat(document.getElementById('min-coverage').value);
   const minLength   = parseInt(document.getElementById('min-length').value, 10);
   const showGenes   = document.getElementById('show-gene-names').checked;
   const nQueries    = queryFiles.length;
@@ -807,19 +824,19 @@ document.getElementById('btn-run').addEventListener('click', async () => {
     // ── Step 1: Initialize paths ────────
     setProgress(0, totalSteps, 'Mounting sequences…');
 
-    // ── Steps 2…N+1: Run nucmer for each query ─────────────────────────
-    const deltaTexts = [];
+    // ── Steps 2…N+1: Run lastz for each query ─────────────────────────
+    const alignmentTexts = [];
     const baseUrl = window.location.href.split('?')[0].split('#')[0].replace(/\/[^\/]*$/, '/');
-    const urlPrefix = baseUrl + "mummer4/4.0.0rc1";
+    const urlPrefix = baseUrl + "lastz/1.04.52";
 
     for (let i = 0; i < nQueries; i++) {
-      setProgress(i + 1, totalSteps, `Aligning ${queryFiles[i].name} with MUMmer4/nucmer… (${i + 1}/${nQueries})`);
+      setProgress(i + 1, totalSteps, `Aligning ${queryFiles[i].name} with lastz… (${i + 1}/${nQueries})`);
 
-      // Re-initialize Aioli for each query to avoid state retention issues from nucmer's argv
+      // Re-initialize Aioli for each query to avoid state retention issues
       const queryCLI = await new Aioli([{
-        tool: "mummer4",
-        program: "nucmer",
-        version: "4.0.0rc1",
+        tool: "lastz",
+        program: "lastz",
+        version: "1.04.52",
         urlPrefix: urlPrefix
       }]);
 
@@ -828,32 +845,28 @@ document.getElementById('btn-run').addEventListener('click', async () => {
         { name: `query_${i}.fasta`, data: queryFiles[i].content }
       ]);
 
-      // Run nucmer: -c 15 -l 10 relaxes exact match requirements for lower identity sequences
-      await queryCLI.exec('nucmer', ['-c', '15', '-l', '10', '-p', 'output', 'ref.fasta', `query_${i}.fasta`]);
-
-      // Read the resulting delta file
-      let deltaText = '';
+      let output = '';
       try {
-        const blobUrl = await queryCLI.download('output.delta');
-        const resp    = await fetch(blobUrl);
-        deltaText     = await resp.text();
-        URL.revokeObjectURL(blobUrl);
+        const res = await queryCLI.exec('lastz', ['ref.fasta', `query_${i}.fasta`, '--format=general']);
+        // The exec function sometimes returns the string directly depending on aioli version
+        output = typeof res === 'string' ? res : (res.stdout || '');
       } catch (e) {
-        console.warn(`nucmer produced no output for query ${i} (${queryFiles[i].name}):`, e);
+        console.warn(`lastz produced no output for query ${i} (${queryFiles[i].name}):`, e);
       }
-      deltaTexts.push(deltaText);
+      alignmentTexts.push(output);
     }
 
-    // ── Step N+2: Pass delta data to Python for processing & plotting ───
+    // ── Step N+2: Pass alignment data to Python for processing & plotting ───
     setProgress(nQueries + 1, totalSteps, 'Processing alignments…');
 
-    pyodide.globals.set('_ref_text',          refFile.content);
-    pyodide.globals.set('_query_delta_texts', pyodide.toPy(deltaTexts));
-    pyodide.globals.set('_query_names',       pyodide.toPy(queryFiles.map(q => q.name)));
-    pyodide.globals.set('_annot_text',        annotFile ? annotFile.content : '');
-    pyodide.globals.set('_min_identity',      minIdentity);
-    pyodide.globals.set('_min_length',        minLength);
-    pyodide.globals.set('_show_gene_names',   showGenes);
+    pyodide.globals.set('_ref_text',             refFile.content);
+    pyodide.globals.set('_query_alignment_texts', pyodide.toPy(alignmentTexts));
+    pyodide.globals.set('_query_names',          pyodide.toPy(queryFiles.map(q => q.name)));
+    pyodide.globals.set('_annot_text',           annotFile ? annotFile.content : '');
+    pyodide.globals.set('_min_identity',         minIdentity);
+    pyodide.globals.set('_min_coverage',         minCoverage);
+    pyodide.globals.set('_min_length',           minLength);
+    pyodide.globals.set('_show_gene_names',      showGenes);
 
     const updateProgress = (step, total, msg) =>
       setProgress(nQueries + 1 + step, nQueries + 1 + total, msg);
@@ -867,14 +880,15 @@ def _run():
         _js_progress(step, total, msg)
     try:
         return run_comparison(
-            reference_fasta_text = _ref_text,
-            query_delta_texts    = list(_query_delta_texts),
-            query_file_names     = list(_query_names),
-            annotation_text      = _annot_text if _annot_text.strip() else None,
-            min_identity         = float(_min_identity),
-            min_length           = int(_min_length),
-            show_gene_names      = bool(_show_gene_names),
-            progress_callback    = _cb,
+            reference_fasta_text   = _ref_text,
+            query_alignment_texts  = list(_query_alignment_texts),
+            query_file_names       = list(_query_names),
+            annotation_text        = _annot_text if _annot_text.strip() else None,
+            min_identity           = float(_min_identity),
+            min_coverage           = float(_min_coverage),
+            min_length             = int(_min_length),
+            show_gene_names        = bool(_show_gene_names),
+            progress_callback      = _cb,
         )
     except Exception as e:
         raise RuntimeError(str(e) + "\\n" + traceback.format_exc())

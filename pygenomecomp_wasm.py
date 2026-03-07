@@ -73,116 +73,115 @@ def parse_gff3(text, target_seq_id):
 
 
 # ============================================================
-# MUMmer4 / nucmer Delta File Parser
+# lastz General Format Parser
 # ============================================================
 
-def parse_nucmer_delta(delta_text, query_file_name, query_index,
-                       min_identity=70.0, min_length=100):
+def parse_lastz_general(alignment_text, query_file_name, query_index,
+                        min_identity=70.0, min_coverage=0.0, min_length=100):
     """
-    Parse a nucmer delta file into hit dicts compatible with generate_svg().
+    Parse a lastz --format=general output into hit dicts compatible with generate_svg().
 
-    Delta format (per alignment block):
-        /path/ref.fasta /path/query.fasta
-        NUCMER
-        >ref_name query_name ref_len query_len
-        s1 e1 s2 e2 errors similarity_errors stop_errors
-        [indel offsets — positive = insertion in ref, negative = insertion in query]
-        0
-        [more alignment records ...]
-
-    Coordinate notes:
-        - s1/e1: 1-based reference coordinates
-        - s2/e2: 1-based query coordinates (e2 < s2 means reverse-complement alignment)
-        - errors: total number of errors (substitutions + indels)
+    Expected header (ignoring leading #):
+    score name1 strand1 size1 zstart1 end1 name2 strand2 size2 zstart2 end2 identity idPct coverage covPct
 
     Returns list of hit dicts.
     """
-    lines = delta_text.splitlines()
+    lines = alignment_text.splitlines()
     hits = []
 
-    if len(lines) < 2:
-        return hits
+    # We map columns by index based on header if present, else fallback to standard defaults
+    header_map = {}
 
-    # Line 0: file paths; line 1: "NUCMER"
-    i = 2
-
-    current_ref_name   = None
-    current_query_name = None
-    current_ref_len    = 0
-    current_query_len  = 0
-
-    while i < len(lines):
-        line = lines[i].strip()
-        i += 1
-
+    for line in lines:
+        line = line.strip()
         if not line:
             continue
-
-        if line.startswith('>'):
-            # Sequence-pair header: >ref_name query_name ref_len query_len
-            parts = line[1:].split()
-            if len(parts) >= 4:
-                current_ref_name   = parts[0]
-                current_query_name = parts[1]
-                try:
-                    current_ref_len   = int(parts[2])
-                    current_query_len = int(parts[3])
-                except ValueError:
-                    current_ref_name = None
+        if line.startswith('#'):
+            # Parse header
+            if 'score' in line.lower() and 'name1' in line.lower():
+                parts = line.lstrip('#').strip().split()
+                header_map = {col.lower(): idx for idx, col in enumerate(parts)}
             continue
 
-        if current_ref_name is None:
+        parts = line.split('\t')
+
+        # Determine indices
+        if header_map:
+            idx_name1   = header_map.get('name1', 1)
+            idx_strand1 = header_map.get('strand1', 2)
+            idx_size1   = header_map.get('size1', 3)
+            idx_zstart1 = header_map.get('zstart1', 4)
+            idx_end1    = header_map.get('end1', 5)
+
+            idx_name2   = header_map.get('name2', 6)
+            idx_strand2 = header_map.get('strand2', 7)
+            idx_size2   = header_map.get('size2', 8)
+            idx_zstart2 = header_map.get('zstart2', 9)
+            idx_end2    = header_map.get('end2', 10)
+
+            idx_idpct   = header_map.get('idpct', 12)
+            idx_covpct  = header_map.get('covpct', 14)
+        else:
+            # Fallback to defaults
+            idx_name1, idx_strand1, idx_size1, idx_zstart1, idx_end1 = 1, 2, 3, 4, 5
+            idx_name2, idx_strand2, idx_size2, idx_zstart2, idx_end2 = 6, 7, 8, 9, 10
+            idx_idpct, idx_covpct = 12, 14
+
+        if len(parts) <= max(idx_end1, idx_end2, idx_idpct, idx_covpct):
             continue
 
-        # Alignment record line: s1 e1 s2 e2 errors sim_errors stop_errors
-        parts = line.split()
-        if len(parts) < 7:
-            continue
         try:
-            s1, e1 = int(parts[0]), int(parts[1])
-            s2, e2 = int(parts[2]), int(parts[3])
-            errors = int(parts[4])
+            ref_name   = parts[idx_name1]
+            query_name = parts[idx_name2]
+
+            sstart = int(parts[idx_zstart1]) + 1 # Convert 0-based zstart to 1-based
+            send   = int(parts[idx_end1])
+
+            qstart = int(parts[idx_zstart2]) + 1
+            qend   = int(parts[idx_end2])
+
+            if parts[idx_strand2] == '-':
+                qstart, qend = qend, qstart
+
+            id_pct_str = parts[idx_idpct].rstrip('%')
+            pident = float(id_pct_str)
+
+            cov_pct_str = parts[idx_covpct].rstrip('%')
+            cov_pct = float(cov_pct_str)
+
+            ref_len   = int(parts[idx_size1])
+            query_len = int(parts[idx_size2])
+
         except (ValueError, IndexError):
             continue
 
-        # Skip indel-offset lines until terminating '0'
-        while i < len(lines):
-            inner = lines[i].strip()
-            i += 1
-            if inner == '0':
-                break
-            # Non-zero integers are indel offsets; anything else ends the block
-            try:
-                int(inner)
-            except ValueError:
-                i -= 1  # put non-integer line back for outer loop
-                break
+        ref_aln_len = abs(send - sstart) + 1
 
-        # Compute metrics
-        ref_aln_len = abs(e1 - s1) + 1
         if ref_aln_len < min_length:
             continue
 
-        # Approximate % identity: (aligned_bases - errors) / aligned_bases
-        pident = max(0.0, (ref_aln_len - errors) / ref_aln_len * 100.0)
         if pident < min_identity:
             continue
 
+        if cov_pct < min_coverage:
+            continue
+
         hits.append({
-            'qseqid':      current_query_name,
-            'sseqid':      current_ref_name,
+            'qseqid':      query_name,
+            'sseqid':      ref_name,
             'pident':      round(pident, 2),
+            'coverage':    round(cov_pct, 2),
             'length':      ref_aln_len,
-            'mismatch':    errors,
+            'mismatch':    0, # Approximation, exact errors not typically needed for visualization
             'gapopen':     0,
-            'qstart':      s2,
-            'qend':        e2,
-            'sstart':      min(s1, e1),   # reference coords always low→high
-            'send':        max(s1, e1),
+            'qstart':      qstart,
+            'qend':        qend,
+            'sstart':      min(sstart, send),
+            'send':        max(sstart, send),
             'evalue':      0.0,
             'bitscore':    round(ref_aln_len * pident / 100.0, 1),
-            'qlen':        current_query_len,
-            'slen':        current_ref_len,
+            'qlen':        query_len,
+            'slen':        ref_len,
             'query_index': query_index,
         })
 
@@ -511,26 +510,27 @@ def generate_svg(blast_hits, annotations, reference_length, query_names,
 # Main Pipeline
 # ============================================================
 
-def run_comparison(reference_fasta_text, query_delta_texts, query_file_names,
+def run_comparison(reference_fasta_text, query_alignment_texts, query_file_names,
                    annotation_text=None,
-                   min_identity=70.0, min_length=100,
+                   min_identity=70.0, min_coverage=0.0, min_length=100,
                    show_gene_names=False,
                    progress_callback=None):
     """
-    Run genome comparison pipeline using pre-computed MUMmer4/nucmer alignments.
+    Run genome comparison pipeline using pre-computed lastz alignments.
 
     Alignments are performed in JavaScript via biowasm/Aioli before this
-    function is called. The resulting nucmer delta files are parsed here.
+    function is called. The resulting lastz --format=general outputs are parsed here.
 
     Args:
-        reference_fasta_text : str       – reference genome in FASTA format
-        query_delta_texts    : list[str] – nucmer .delta outputs (one per query)
-        query_file_names     : list[str] – display names for query files
-        annotation_text      : str|None  – optional GFF3 annotation text
-        min_identity         : float     – minimum % identity (default 70)
-        min_length           : int       – minimum alignment length bp (default 100)
-        show_gene_names      : bool      – annotate gene names on the plot
-        progress_callback    : callable(step, total, message) | None
+        reference_fasta_text   : str       – reference genome in FASTA format
+        query_alignment_texts  : list[str] – lastz outputs (one per query)
+        query_file_names       : list[str] – display names for query files
+        annotation_text        : str|None  – optional GFF3 annotation text
+        min_identity           : float     – minimum % identity (default 70)
+        min_coverage           : float     – minimum % coverage (default 0)
+        min_length             : int       – minimum alignment length bp (default 100)
+        show_gene_names        : bool      – annotate gene names on the plot
+        progress_callback      : callable(step, total, message) | None
 
     Returns:
         str – SVG plot as a string
@@ -539,7 +539,7 @@ def run_comparison(reference_fasta_text, query_delta_texts, query_file_names,
         if progress_callback:
             progress_callback(step, total, msg)
 
-    n_queries   = len(query_delta_texts)
+    n_queries   = len(query_alignment_texts)
     total_steps = 3 + n_queries
 
     # 1. Parse reference (for name and length only — alignment done externally)
@@ -552,14 +552,14 @@ def run_comparison(reference_fasta_text, query_delta_texts, query_file_names,
     ref_len    = len(ref_record['seq'])
     _prog(1, total_steps, f'Reference: {ref_name} ({ref_len:,} bp)')
 
-    # 2. Parse nucmer delta files into hit dicts
+    # 2. Parse lastz alignment files into hit dicts
     all_hits       = []
     all_insertions = []
 
-    for i, (delta_text, qname) in enumerate(zip(query_delta_texts, query_file_names)):
+    for i, (alignment_text, qname) in enumerate(zip(query_alignment_texts, query_file_names)):
         _prog(2 + i, total_steps, f'Processing alignments for {qname} ({i+1}/{n_queries})…')
-        query_hits = parse_nucmer_delta(
-            delta_text, qname, i, min_identity, min_length
+        query_hits = parse_lastz_general(
+            alignment_text, qname, i, min_identity, min_coverage, min_length
         )
         all_hits.extend(query_hits)
         all_insertions.extend(find_insertion_sites(query_hits))
