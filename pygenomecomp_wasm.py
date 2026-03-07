@@ -249,6 +249,11 @@ ANNOTATION_COLORS = {
 }
 DEFAULT_ANNOTATION_COLOR = '#808080'
 
+# Linear alignment view colours
+LINEAR_FWD_COLOR      = '#f4a460'   # sandy orange – forward alignment
+LINEAR_INV_COLOR      = '#b8a4c9'   # muted purple – inverted alignment
+LINEAR_BACKBONE_COLOR = '#c8d4e8'   # light steel-blue – sequence backbone
+
 
 def _esc(s):
     return str(s).replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('"', '&quot;')
@@ -515,6 +520,236 @@ def generate_svg(blast_hits, annotations, reference_length, query_names,
 
 
 # ============================================================
+# Linear Alignment SVG Generator
+# ============================================================
+
+def generate_linear_svg(blast_hits, annotations, reference_length, reference_name,
+                        query_names, show_gene_names=False):
+    """Generate a linear (Mauve-style) alignment view SVG and return it as a string.
+
+    Sequences are stacked as horizontal tracks. Alignment ribbons connect aligned
+    regions between the reference (top) and each query (below), coloured by strand:
+    orange = forward, purple = inverted.
+    """
+    if reference_length == 0:
+        raise ValueError("Reference length cannot be zero.")
+
+    n_queries = len(query_names)
+    n_tracks  = n_queries + 1  # reference + one per query
+
+    # Compute a display length for each query from the max qlen seen in hits
+    query_lengths = {}
+    for hit in blast_hits:
+        qi = hit['query_index']
+        ql = hit['qlen']
+        if qi not in query_lengths or ql > query_lengths[qi]:
+            query_lengths[qi] = ql
+    for i in range(n_queries):
+        if i not in query_lengths:
+            query_lengths[i] = reference_length  # fallback
+
+    # ── Layout constants ──────────────────────────────────────────────
+    W           = 1200
+    LEFT        = 150   # reserved for sequence labels
+    RIGHT       = 30
+    TOP         = 55
+    BOTTOM      = 70
+    CONTENT_W   = W - LEFT - RIGHT
+    TRACK_H     = 12    # backbone bar height (px)
+    TRACK_SPACE = 90    # center-to-center vertical spacing (px)
+    GENE_H      = 14    # gene-arrow height (px)
+    RIBBON_OP   = 0.55  # ribbon opacity
+
+    H = TOP + n_tracks * TRACK_SPACE + BOTTOM
+
+    # ── Coordinate helpers ────────────────────────────────────────────
+    def ref_x(pos):
+        """Reference position (1-based bp) → SVG x."""
+        return LEFT + (pos - 1) / reference_length * CONTENT_W
+
+    def qx(pos, qi):
+        """Query position (1-based bp) → SVG x, scaled to that query's display length."""
+        return LEFT + (pos - 1) / query_lengths.get(qi, 1) * CONTENT_W
+
+    def track_cy(i):
+        """Centre-y of track i (0 = reference)."""
+        return TOP + i * TRACK_SPACE
+
+    out = []
+
+    # ── SVG header ────────────────────────────────────────────────────
+    out.append(
+        f'<svg xmlns="http://www.w3.org/2000/svg" '
+        f'width="{W}" height="{H}" viewBox="0 0 {W} {H}">\n'
+    )
+    out.append('<style>text { font-family: Arial, Helvetica, sans-serif; }</style>\n')
+    out.append(f'<rect width="{W}" height="{H}" fill="white"/>\n')
+
+    # ── Alignment ribbons (drawn first, behind track backbones) ───────
+    for hit in blast_hits:
+        qi  = hit['query_index']
+        rx1 = ref_x(hit['sstart'])
+        rx2 = ref_x(hit['send'])
+        ry  = track_cy(0) + TRACK_H / 2        # bottom edge of reference track
+
+        qs  = min(hit['qstart'], hit['qend'])
+        qe  = max(hit['qstart'], hit['qend'])
+        qx1 = qx(qs, qi)
+        qx2 = qx(qe, qi)
+        qy  = track_cy(qi + 1) - TRACK_H / 2  # top edge of query track
+
+        # Inverted when qstart > qend (coords were swapped by the parser for '-' strand)
+        inverted = hit['qstart'] > hit['qend']
+        fill     = LINEAR_INV_COLOR if inverted else LINEAR_FWD_COLOR
+
+        # Skip ribbons too narrow to see
+        if abs(rx2 - rx1) < 0.5 and abs(qx2 - qx1) < 0.5:
+            continue
+
+        mid_y = (ry + qy) / 2
+        out.append(
+            f'<path d="'
+            f'M {rx1:.1f},{ry:.1f} L {rx2:.1f},{ry:.1f} '
+            f'C {rx2:.1f},{mid_y:.1f} {qx2:.1f},{mid_y:.1f} {qx2:.1f},{qy:.1f} '
+            f'L {qx1:.1f},{qy:.1f} '
+            f'C {qx1:.1f},{mid_y:.1f} {rx1:.1f},{mid_y:.1f} {rx1:.1f},{ry:.1f} Z" '
+            f'fill="{fill}" opacity="{RIBBON_OP:.2f}"/>\n'
+        )
+
+    # ── Track backbones ────────────────────────────────────────────────
+    ref_cy = track_cy(0)
+    out.append(
+        f'<rect x="{LEFT:.1f}" y="{ref_cy - TRACK_H / 2:.1f}" '
+        f'width="{CONTENT_W:.1f}" height="{TRACK_H:.1f}" '
+        f'fill="{LINEAR_BACKBONE_COLOR}" rx="3"/>\n'
+    )
+    for i in range(n_queries):
+        cy = track_cy(i + 1)
+        out.append(
+            f'<rect x="{LEFT:.1f}" y="{cy - TRACK_H / 2:.1f}" '
+            f'width="{CONTENT_W:.1f}" height="{TRACK_H:.1f}" '
+            f'fill="{LINEAR_BACKBONE_COLOR}" rx="3"/>\n'
+        )
+
+    # ── Gene-annotation arrows on the reference track ─────────────────
+    if annotations:
+        for feat in annotations:
+            ftype = feat['feature_type'].lower()
+            if ftype not in ('cds', 'gene', 'trna', 'rrna'):
+                continue
+            ax1 = LEFT + (feat['start'] - 1) / reference_length * CONTENT_W
+            ax2 = LEFT + feat['end']           / reference_length * CONTENT_W
+            aw  = ax2 - ax1
+            if aw < 0.5:
+                continue
+            color  = _annotation_color(ftype)
+            strand = feat.get('strand') or 1
+            half_h = GENE_H / 2
+            head_w = min(half_h * 1.2, aw * 0.4)
+            if strand == 1:
+                body_end = max(ax1, ax2 - head_w)
+                pts = (
+                    f'{ax1:.1f},{ref_cy - half_h:.1f} '
+                    f'{body_end:.1f},{ref_cy - half_h:.1f} '
+                    f'{ax2:.1f},{ref_cy:.1f} '
+                    f'{body_end:.1f},{ref_cy + half_h:.1f} '
+                    f'{ax1:.1f},{ref_cy + half_h:.1f}'
+                )
+            else:
+                body_start = min(ax2, ax1 + head_w)
+                pts = (
+                    f'{ax2:.1f},{ref_cy - half_h:.1f} '
+                    f'{body_start:.1f},{ref_cy - half_h:.1f} '
+                    f'{ax1:.1f},{ref_cy:.1f} '
+                    f'{body_start:.1f},{ref_cy + half_h:.1f} '
+                    f'{ax2:.1f},{ref_cy + half_h:.1f}'
+                )
+            out.append(f'<polygon points="{pts}" fill="{color}" opacity="0.9"/>\n')
+
+            if show_gene_names and ftype in ('cds', 'gene'):
+                gname = (
+                    feat['attributes'].get('Name') or feat.get('id') or
+                    feat['attributes'].get('gene') or ''
+                )
+                if gname:
+                    gx = (ax1 + ax2) / 2
+                    gy = ref_cy - half_h - 3
+                    out.append(
+                        f'<text x="{gx:.1f}" y="{gy:.1f}" '
+                        f'font-size="8" text-anchor="middle" fill="#333">'
+                        f'{_esc(gname)}</text>\n'
+                    )
+
+    # ── Track labels ──────────────────────────────────────────────────
+    out.append(
+        f'<text x="{LEFT - 8:.1f}" y="{ref_cy + 4:.1f}" '
+        f'font-size="12" font-weight="bold" text-anchor="end" fill="#333">'
+        f'{_esc(reference_name)}</text>\n'
+    )
+    for i, name in enumerate(query_names):
+        cy        = track_cy(i + 1)
+        disp_name = (name[:22] + '\u2026') if len(name) > 23 else name
+        out.append(
+            f'<text x="{LEFT - 8:.1f}" y="{cy + 4:.1f}" '
+            f'font-size="12" font-weight="bold" text-anchor="end" fill="#333">'
+            f'{_esc(disp_name)}</text>\n'
+        )
+
+    # ── Reference scale ticks ─────────────────────────────────────────
+    scale_y = ref_cy + TRACK_H / 2 + 15
+    out.append(
+        f'<line x1="{LEFT:.1f}" y1="{scale_y:.1f}" '
+        f'x2="{LEFT + CONTENT_W:.1f}" y2="{scale_y:.1f}" '
+        f'stroke="#bbb" stroke-width="0.5"/>\n'
+    )
+    for t in range(11):
+        tx  = LEFT + t / 10 * CONTENT_W
+        pos = t / 10 * reference_length
+        if   reference_length > 2_000_000: lbl = f'{pos/1e6:.1f} Mb'
+        elif reference_length > 2000:      lbl = f'{pos/1e3:.0f} kb'
+        else:                              lbl = f'{int(pos)} bp'
+        out.append(
+            f'<line x1="{tx:.1f}" y1="{scale_y:.1f}" '
+            f'x2="{tx:.1f}" y2="{scale_y + 4:.1f}" '
+            f'stroke="#888" stroke-width="0.8"/>\n'
+        )
+        anchor = 'start' if t == 0 else ('end' if t == 10 else 'middle')
+        out.append(
+            f'<text x="{tx:.1f}" y="{scale_y + 13:.1f}" '
+            f'font-size="9" text-anchor="{anchor}" fill="#666">'
+            f'{_esc(lbl)}</text>\n'
+        )
+
+    # ── Legend ────────────────────────────────────────────────────────
+    lx = W - 175
+    ly = 15
+    bs = 12
+    ih = 20
+    legend_items = [
+        ('Sequence Backbone',  LINEAR_BACKBONE_COLOR),
+        ('Forward Alignment',  LINEAR_FWD_COLOR),
+        ('Inverted Alignment', LINEAR_INV_COLOR),
+    ]
+    if annotations:
+        legend_items += [('CDS', _annotation_color('cds')), ('Gene', _annotation_color('gene'))]
+    lbg_h = len(legend_items) * ih + 16
+    out.append(
+        f'<rect x="{lx - 8:.1f}" y="{ly - 6:.1f}" width="178" height="{lbg_h:.1f}" '
+        f'fill="white" fill-opacity="0.9" stroke="#ddd" stroke-width="1" rx="5"/>\n'
+    )
+    for label, color in legend_items:
+        out.append(f'<rect x="{lx:.1f}" y="{ly:.1f}" width="{bs}" height="{bs}" fill="{color}" rx="2"/>\n')
+        out.append(
+            f'<text x="{lx + bs + 6:.1f}" y="{ly + bs - 1:.1f}" '
+            f'font-size="10" fill="#333">{_esc(label)}</text>\n'
+        )
+        ly += ih
+
+    out.append('</svg>')
+    return ''.join(out)
+
+
+# ============================================================
 # Main Pipeline
 # ============================================================
 
@@ -581,9 +816,9 @@ def run_comparison(reference_fasta_text, query_alignment_texts, query_file_names
         except Exception as e:
             print(f'Warning: annotation parse error: {e}')
 
-    # 4. Generate plot
+    # 4. Generate plots
     _prog(3 + n_queries - 1, total_steps, 'Generating circular plot…')
-    svg = generate_svg(
+    circular_svg = generate_svg(
         blast_hits=all_hits,
         annotations=annotations,
         reference_length=ref_len,
@@ -592,5 +827,13 @@ def run_comparison(reference_fasta_text, query_alignment_texts, query_file_names
         show_gene_names=show_gene_names,
         insertion_sites=all_insertions,
     )
+    linear_svg = generate_linear_svg(
+        blast_hits=all_hits,
+        annotations=annotations,
+        reference_length=ref_len,
+        reference_name=ref_name,
+        query_names=query_file_names,
+        show_gene_names=show_gene_names,
+    )
     _prog(total_steps, total_steps, 'Done!')
-    return svg
+    return circular_svg, linear_svg
