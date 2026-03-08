@@ -272,6 +272,25 @@ def _hit_color(qi, identity, min_identity=70.0):
     strength = 0.4 + 0.6 * frac
     return _rgb_hex(int(255-(255-r)*strength), int(255-(255-g)*strength), int(255-(255-b)*strength))
 
+def _linear_hit_color(identity, inverted, min_identity=70.0):
+    """Color linear/alignment ribbon by strand (fwd=orange, inv=purple) and identity.
+
+    Lower identity → paler shade; higher identity → more saturated shade.
+    """
+    if inverted:
+        r, g, b = 184, 164, 201   # #b8a4c9  LINEAR_INV_COLOR
+    else:
+        r, g, b = 244, 164, 96    # #f4a460  LINEAR_FWD_COLOR
+    identity = max(min_identity, min(100.0, identity))
+    span = 100.0 - min_identity
+    frac = (identity - min_identity) / span if span > 0 else 1.0
+    strength = 0.3 + 0.7 * frac   # 0.3 (pale) → 1.0 (full colour)
+    return _rgb_hex(
+        int(255 - (255 - r) * strength),
+        int(255 - (255 - g) * strength),
+        int(255 - (255 - b) * strength),
+    )
+
 def _ring_bg_color(qi):
     r, g, b = _ring_color(qi)
     f = 0.10
@@ -527,7 +546,7 @@ def generate_svg(blast_hits, annotations, reference_length, query_names,
 # ============================================================
 
 def generate_linear_svg(blast_hits, annotations, reference_length, reference_name,
-                        query_names, show_gene_names=False):
+                        query_names, show_gene_names=False, min_identity=70.0):
     """Generate a linear (Mauve-style) alignment view SVG and return it as a string.
 
     Sequences are stacked as horizontal tracks. Alignment ribbons connect aligned
@@ -557,7 +576,7 @@ def generate_linear_svg(blast_hits, annotations, reference_length, reference_nam
     # ── Layout constants ──────────────────────────────────────────────
     W           = 1200
     LEFT        = 150   # reserved for sequence labels
-    RIGHT       = 30
+    RIGHT       = 190   # wide right margin so the legend never overlaps content
     TOP         = 55
     BOTTOM      = 70
     CONTENT_W   = W - LEFT - RIGHT
@@ -589,6 +608,23 @@ def generate_linear_svg(blast_hits, annotations, reference_length, reference_nam
         f'width="{W}" height="{H}" viewBox="0 0 {W} {H}">\n'
     )
     out.append('<style>text { font-family: Arial, Helvetica, sans-serif; }</style>\n')
+
+    # ── Gradient defs for identity legend ────────────────────────────
+    _grad_fracs = (0, 0.33, 0.66, 1)
+    _span = 100.0 - min_identity
+    fwd_stops = ''.join(
+        f'  <stop offset="{f}" stop-color="{_linear_hit_color(min_identity + f * _span, False, min_identity)}"/>\n'
+        for f in _grad_fracs
+    )
+    inv_stops = ''.join(
+        f'  <stop offset="{f}" stop-color="{_linear_hit_color(min_identity + f * _span, True, min_identity)}"/>\n'
+        for f in _grad_fracs
+    )
+    out.append('<defs>\n')
+    out.append(f'<linearGradient id="lin_fwd_grad" x1="0" y1="0" x2="1" y2="0">\n{fwd_stops}</linearGradient>\n')
+    out.append(f'<linearGradient id="lin_inv_grad" x1="0" y1="0" x2="1" y2="0">\n{inv_stops}</linearGradient>\n')
+    out.append('</defs>\n')
+
     out.append(f'<rect width="{W}" height="{H}" fill="white"/>\n')
 
     # ── Alignment ribbons (drawn first, behind track backbones) ───────
@@ -606,7 +642,7 @@ def generate_linear_svg(blast_hits, annotations, reference_length, reference_nam
 
         # Inverted when qstart > qend (coords were swapped by the parser for '-' strand)
         inverted = hit['qstart'] > hit['qend']
-        fill     = LINEAR_INV_COLOR if inverted else LINEAR_FWD_COLOR
+        fill     = _linear_hit_color(hit['pident'], inverted, min_identity)
 
         # Skip ribbons too narrow to see
         if abs(rx2 - rx1) < 0.5 and abs(qx2 - qx1) < 0.5:
@@ -728,30 +764,69 @@ def generate_linear_svg(blast_hits, annotations, reference_length, reference_nam
             f'{_esc(lbl)}</text>\n'
         )
 
-    # ── Legend ────────────────────────────────────────────────────────
-    lx = W - 175
-    ly = 15
-    bs = 12
-    ih = 20
-    legend_items = [
-        ('Sequence Backbone',  LINEAR_BACKBONE_COLOR),
-        ('Forward Alignment',  LINEAR_FWD_COLOR),
-        ('Inverted Alignment', LINEAR_INV_COLOR),
-    ]
+    # ── Legend ─────────────────────────────────────────────────────────
+    # Positioned in the right margin (x > LEFT + CONTENT_W) so it never
+    # overlaps the track or ribbon content.
+    lx  = LEFT + CONTENT_W + 12   # 12 px inside the right margin
+    ly  = TOP
+    bs  = 12
+    ih  = 20
+    gw  = 110   # gradient bar width
+    gh  = 10    # gradient bar height
+
+    solid_items = [('Sequence Backbone', LINEAR_BACKBONE_COLOR)]
     if annotations:
-        legend_items += [('CDS', _annotation_color('cds')), ('Gene', _annotation_color('gene'))]
-    lbg_h = len(legend_items) * ih + 16
+        ann_types = []
+        seen = set()
+        for feat in annotations:
+            ft = feat['feature_type'].lower()
+            if ft in ('cds', 'gene', 'trna', 'rrna') and ft not in seen:
+                ann_types.append(ft)
+                seen.add(ft)
+        for ft in ann_types:
+            label = {'cds': 'CDS', 'gene': 'Gene', 'trna': 'tRNA', 'rrna': 'rRNA'}[ft]
+            solid_items.append((label, _annotation_color(ft)))
+
+    # Height: solid items + "% Identity" header + two gradient bars + label row + padding
+    lbg_h = (len(solid_items) * ih
+              + ih                    # "% Identity" header
+              + (gh + 4) * 2          # two gradient bars
+              + ih                    # min%/100% label row
+              + 20)                   # top/bottom padding
+    lbg_w = gw + 30
+
     out.append(
-        f'<rect x="{lx - 8:.1f}" y="{ly - 6:.1f}" width="178" height="{lbg_h:.1f}" '
-        f'fill="white" fill-opacity="0.9" stroke="#ddd" stroke-width="1" rx="5"/>\n'
+        f'<rect x="{lx - 8:.1f}" y="{ly - 8:.1f}" width="{lbg_w:.1f}" height="{lbg_h:.1f}" '
+        f'fill="white" fill-opacity="0.95" stroke="#ddd" stroke-width="1" rx="5"/>\n'
     )
-    for label, color in legend_items:
+    for label, color in solid_items:
         out.append(f'<rect x="{lx:.1f}" y="{ly:.1f}" width="{bs}" height="{bs}" fill="{color}" rx="2"/>\n')
         out.append(
-            f'<text x="{lx + bs + 6:.1f}" y="{ly + bs - 1:.1f}" '
+            f'<text x="{lx + bs + 5:.1f}" y="{ly + bs - 1:.1f}" '
             f'font-size="10" fill="#333">{_esc(label)}</text>\n'
         )
         ly += ih
+
+    # Identity gradient section
+    out.append(
+        f'<text x="{lx:.1f}" y="{ly + 10:.1f}" '
+        f'font-size="10" font-weight="bold" fill="#555">% Identity</text>\n'
+    )
+    ly += ih
+    # Forward gradient bar
+    out.append(f'<rect x="{lx:.1f}" y="{ly:.1f}" width="{gw}" height="{gh}" '
+               f'fill="url(#lin_fwd_grad)" rx="2"/>\n')
+    out.append(f'<text x="{lx + gw + 4:.1f}" y="{ly + gh - 1:.1f}" '
+               f'font-size="9" fill="#555">Fwd</text>\n')
+    ly += gh + 4
+    # Inverted gradient bar
+    out.append(f'<rect x="{lx:.1f}" y="{ly:.1f}" width="{gw}" height="{gh}" '
+               f'fill="url(#lin_inv_grad)" rx="2"/>\n')
+    out.append(f'<text x="{lx + gw + 4:.1f}" y="{ly + gh - 1:.1f}" '
+               f'font-size="9" fill="#555">Inv</text>\n')
+    ly += gh + 4
+    out.append(f'<text x="{lx:.1f}" y="{ly + 10:.1f}" font-size="9" fill="#666">{min_identity:.0f}%</text>\n')
+    out.append(f'<text x="{lx + gw - 18:.1f}" y="{ly + 10:.1f}" font-size="9" fill="#666">100%</text>\n')
 
     out.append('</svg>')
     return ''.join(out)
@@ -762,7 +837,7 @@ def generate_linear_svg(blast_hits, annotations, reference_length, reference_nam
 # ============================================================
 
 def generate_alignment_svg(blast_hits, annotations, reference_length, reference_name,
-                           query_names, show_gene_names=False):
+                           query_names, show_gene_names=False, min_identity=70.0):
     """Generate a pygenomeviz-style alignment SVG.
 
     Each query gets its own section with the reference track on top and the
@@ -791,7 +866,7 @@ def generate_alignment_svg(blast_hits, annotations, reference_length, reference_
     # ── Layout constants ──────────────────────────────────────────────
     W            = 1200
     LEFT         = 160      # reserved for sequence labels
-    RIGHT        = 30
+    RIGHT        = 190      # wide right margin so the legend never overlaps content
     CONTENT_W    = W - LEFT - RIGHT
     TRACK_H      = 12       # backbone bar height (px)
     GENE_H       = 14       # gene arrow height (px)
@@ -832,6 +907,23 @@ def generate_alignment_svg(blast_hits, annotations, reference_length, reference_
         f'width="{W}" height="{H}" viewBox="0 0 {W} {H}">\n'
     )
     out.append('<style>text { font-family: Arial, Helvetica, sans-serif; }</style>\n')
+
+    # ── Gradient defs for identity legend ────────────────────────────
+    _grad_fracs = (0, 0.33, 0.66, 1)
+    _span = 100.0 - min_identity
+    fwd_stops = ''.join(
+        f'  <stop offset="{f}" stop-color="{_linear_hit_color(min_identity + f * _span, False, min_identity)}"/>\n'
+        for f in _grad_fracs
+    )
+    inv_stops = ''.join(
+        f'  <stop offset="{f}" stop-color="{_linear_hit_color(min_identity + f * _span, True, min_identity)}"/>\n'
+        for f in _grad_fracs
+    )
+    out.append('<defs>\n')
+    out.append(f'<linearGradient id="aln_fwd_grad" x1="0" y1="0" x2="1" y2="0">\n{fwd_stops}</linearGradient>\n')
+    out.append(f'<linearGradient id="aln_inv_grad" x1="0" y1="0" x2="1" y2="0">\n{inv_stops}</linearGradient>\n')
+    out.append('</defs>\n')
+
     out.append(f'<rect width="{W}" height="{H}" fill="white"/>\n')
 
     # Group hits by query index
@@ -876,7 +968,7 @@ def generate_alignment_svg(blast_hits, annotations, reference_length, reference_
             qx2 = qx(qe, qi)
 
             inverted = hit['qstart'] > hit['qend']
-            fill     = LINEAR_INV_COLOR if inverted else LINEAR_FWD_COLOR
+            fill     = _linear_hit_color(hit['pident'], inverted, min_identity)
 
             if abs(rx2 - rx1) < 0.5 and abs(qx2 - qx1) < 0.5:
                 continue
@@ -995,30 +1087,69 @@ def generate_alignment_svg(blast_hits, annotations, reference_length, reference_
             f'{_esc(disp_name)}</text>\n'
         )
 
-    # ── Legend ────────────────────────────────────────────────────────
-    lx = W - 175
-    ly = 15
-    bs = 12
-    ih = 20
-    legend_items = [
-        ('Sequence Backbone',  LINEAR_BACKBONE_COLOR),
-        ('Forward Alignment',  LINEAR_FWD_COLOR),
-        ('Inverted Alignment', LINEAR_INV_COLOR),
-    ]
+    # ── Legend ─────────────────────────────────────────────────────────
+    # Positioned in the right margin (x > LEFT + CONTENT_W) so it never
+    # overlaps the track or ribbon content.
+    lx  = LEFT + CONTENT_W + 12   # 12 px inside the right margin
+    ly  = TOP_HEADER + 10
+    bs  = 12
+    ih  = 20
+    gw  = 110   # gradient bar width
+    gh  = 10    # gradient bar height
+
+    solid_items = [('Sequence Backbone', LINEAR_BACKBONE_COLOR)]
     if annotations:
-        legend_items += [('CDS', _annotation_color('cds')), ('Gene', _annotation_color('gene'))]
-    lbg_h = len(legend_items) * ih + 16
+        ann_types = []
+        seen = set()
+        for feat in annotations:
+            ft = feat['feature_type'].lower()
+            if ft in ('cds', 'gene', 'trna', 'rrna') and ft not in seen:
+                ann_types.append(ft)
+                seen.add(ft)
+        for ft in ann_types:
+            label = {'cds': 'CDS', 'gene': 'Gene', 'trna': 'tRNA', 'rrna': 'rRNA'}[ft]
+            solid_items.append((label, _annotation_color(ft)))
+
+    # Height: solid items + "% Identity" header + two gradient bars + label row + padding
+    lbg_h = (len(solid_items) * ih
+              + ih                    # "% Identity" header
+              + (gh + 4) * 2          # two gradient bars
+              + ih                    # min%/100% label row
+              + 20)                   # top/bottom padding
+    lbg_w = gw + 30
+
     out.append(
-        f'<rect x="{lx - 8:.1f}" y="{ly - 6:.1f}" width="178" height="{lbg_h:.1f}" '
-        f'fill="white" fill-opacity="0.9" stroke="#ddd" stroke-width="1" rx="5"/>\n'
+        f'<rect x="{lx - 8:.1f}" y="{ly - 8:.1f}" width="{lbg_w:.1f}" height="{lbg_h:.1f}" '
+        f'fill="white" fill-opacity="0.95" stroke="#ddd" stroke-width="1" rx="5"/>\n'
     )
-    for label, color in legend_items:
+    for label, color in solid_items:
         out.append(f'<rect x="{lx:.1f}" y="{ly:.1f}" width="{bs}" height="{bs}" fill="{color}" rx="2"/>\n')
         out.append(
-            f'<text x="{lx + bs + 6:.1f}" y="{ly + bs - 1:.1f}" '
+            f'<text x="{lx + bs + 5:.1f}" y="{ly + bs - 1:.1f}" '
             f'font-size="10" fill="#333">{_esc(label)}</text>\n'
         )
         ly += ih
+
+    # Identity gradient section
+    out.append(
+        f'<text x="{lx:.1f}" y="{ly + 10:.1f}" '
+        f'font-size="10" font-weight="bold" fill="#555">% Identity</text>\n'
+    )
+    ly += ih
+    # Forward gradient bar
+    out.append(f'<rect x="{lx:.1f}" y="{ly:.1f}" width="{gw}" height="{gh}" '
+               f'fill="url(#aln_fwd_grad)" rx="2"/>\n')
+    out.append(f'<text x="{lx + gw + 4:.1f}" y="{ly + gh - 1:.1f}" '
+               f'font-size="9" fill="#555">Fwd</text>\n')
+    ly += gh + 4
+    # Inverted gradient bar
+    out.append(f'<rect x="{lx:.1f}" y="{ly:.1f}" width="{gw}" height="{gh}" '
+               f'fill="url(#aln_inv_grad)" rx="2"/>\n')
+    out.append(f'<text x="{lx + gw + 4:.1f}" y="{ly + gh - 1:.1f}" '
+               f'font-size="9" fill="#555">Inv</text>\n')
+    ly += gh + 4
+    out.append(f'<text x="{lx:.1f}" y="{ly + 10:.1f}" font-size="9" fill="#666">{min_identity:.0f}%</text>\n')
+    out.append(f'<text x="{lx + gw - 18:.1f}" y="{ly + 10:.1f}" font-size="9" fill="#666">100%</text>\n')
 
     out.append('</svg>')
     return ''.join(out)
@@ -1180,6 +1311,7 @@ def run_comparison(reference_fasta_text, query_alignment_texts, query_file_names
         reference_name=ref_name,
         query_names=ordered_names,
         show_gene_names=show_gene_names,
+        min_identity=min_identity,
     )
     alignment_svg = generate_alignment_svg(
         blast_hits=all_hits,
@@ -1188,6 +1320,7 @@ def run_comparison(reference_fasta_text, query_alignment_texts, query_file_names
         reference_name=ref_name,
         query_names=ordered_names,
         show_gene_names=show_gene_names,
+        min_identity=min_identity,
     )
     _prog(total_steps, total_steps, 'Done!')
     return circular_svg, linear_svg, alignment_svg
