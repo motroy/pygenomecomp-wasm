@@ -264,10 +264,11 @@ def _rgb_hex(r, g, b):
 def _ring_color(qi):
     return RING_COLORS[qi % len(RING_COLORS)]
 
-def _hit_color(qi, identity):
+def _hit_color(qi, identity, min_identity=70.0):
     r, g, b = _ring_color(qi)
-    identity = max(70.0, min(100.0, identity))
-    frac = (identity - 70.0) / 30.0
+    identity = max(min_identity, min(100.0, identity))
+    span = 100.0 - min_identity
+    frac = (identity - min_identity) / span if span > 0 else 1.0
     strength = 0.4 + 0.6 * frac
     return _rgb_hex(int(255-(255-r)*strength), int(255-(255-g)*strength), int(255-(255-b)*strength))
 
@@ -309,7 +310,7 @@ def _full_ring(cx, cy, ri, ro, fill, opacity=1.0):
 
 def generate_svg(blast_hits, annotations, reference_length, query_names,
                  reference_display_name, show_gene_names=False,
-                 insertion_sites=None):
+                 insertion_sites=None, min_identity=70.0):
     """Generate a BRIG-style circular SVG and return it as a string."""
     if reference_length == 0:
         raise ValueError("Reference length cannot be zero.")
@@ -333,11 +334,13 @@ def generate_svg(blast_hits, annotations, reference_length, query_names,
                f'viewBox="0 0 {SVG_WIDTH} {SVG_HEIGHT}">\n')
     out.append('<style>text { font-family: Arial, Helvetica, sans-serif; }</style>\n')
     out.append('<defs>\n')
+    _grad_fracs = (0, 0.33, 0.66, 1)
+    _span = 100.0 - min_identity
     for i in range(min(n_queries, len(RING_COLORS))):
         gid = f'ig{i}'
         stops = ''.join(
-            f'  <stop offset="{frac}" stop-color="{_hit_color(i, ident)}"/>\n'
-            for frac, ident in ((0, 70), (0.33, 80), (0.66, 90), (1, 100))
+            f'  <stop offset="{frac}" stop-color="{_hit_color(i, min_identity + frac * _span, min_identity)}"/>\n'
+            for frac in _grad_fracs
         )
         out.append(f'<linearGradient id="{gid}" x1="0" y1="0" x2="1" y2="0">\n{stops}</linearGradient>\n')
     out.append('</defs>\n')
@@ -412,7 +415,7 @@ def generate_svg(blast_hits, annotations, reference_length, query_names,
         if abs(er - sr) < 1e-6:
             continue
         out.append(_arc(CENTER_X, CENTER_Y, ir, or_, sr, er,
-                        _hit_color(qi, hit['pident'])))
+                        _hit_color(qi, hit['pident'], min_identity)))
 
     # --- Insertion site markers ---
     INS_COLOR = '#1a1a1a'
@@ -495,7 +498,7 @@ def generate_svg(blast_hits, annotations, reference_length, query_names,
             out.append(f'<rect x="{lx}" y="{ly}" width="{gw}" height="{gh}" '
                        f'fill="url(#ig{i})" rx="2"/>\n')
             ly += gh + 4
-        out.append(f'<text x="{lx}" y="{ly}" font-size="9" fill="#666">70%</text>\n')
+        out.append(f'<text x="{lx}" y="{ly}" font-size="9" fill="#666">{min_identity:.0f}%</text>\n')
         out.append(f'<text x="{lx+gw-25}" y="{ly}" font-size="9" fill="#666">100%</text>\n')
         ly += ih
 
@@ -1168,6 +1171,7 @@ def run_comparison(reference_fasta_text, query_alignment_texts, query_file_names
         reference_display_name=ref_name,
         show_gene_names=show_gene_names,
         insertion_sites=all_insertions,
+        min_identity=min_identity,
     )
     linear_svg = generate_linear_svg(
         blast_hits=all_hits,
