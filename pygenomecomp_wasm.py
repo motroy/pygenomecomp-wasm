@@ -1,8 +1,8 @@
 """
 PyGenomeComp WASM - Genome Comparison Tool
 Self-contained Python module for Pyodide (browser WASM runtime).
-Alignments are performed by MUMmer4/nucmer via biowasm (in JavaScript),
-and the resulting delta files are parsed here for visualization.
+Alignments are performed by lastz via biowasm (in JavaScript),
+and the resulting general format outputs are parsed here for visualization.
 No external Python dependencies required.
 """
 import math

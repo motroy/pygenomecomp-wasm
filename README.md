@@ -10,12 +10,12 @@ A self-contained **WebAssembly** port of [pygenomecomp](https://github.com/motro
 
 Upload one or more genome assemblies in FASTA format and the tool will:
 
-1. Align each **query** genome against the **reference** using a k-mer based algorithm (replacing BLAST, which cannot run in a browser)
+1. Align each **query** genome against the **reference** using **lastz** (via [biowasm](https://biowasm.com))
 2. Optionally overlay **GFF3 annotations** (CDS, gene, rRNA, tRNA features)
-3. Render a **BRIG-style circular SVG plot** showing sequence identity as coloured rings
-4. Let you **download** the SVG for publication
+3. Render a **BRIG-style circular plot**, as well as **Linear** and **Alignment** views, showing sequence identity as coloured rings or ribbons
+4. Let you **download** the SVGs for publication
 
-All computation runs in [Pyodide](https://pyodide.org) — Python compiled to WebAssembly — so your genomic data never leaves your machine.
+All computation runs in your browser via [biowasm](https://biowasm.com) and [Pyodide](https://pyodide.org) — so your genomic data never leaves your machine.
 
 ---
 
@@ -23,9 +23,9 @@ All computation runs in [Pyodide](https://pyodide.org) — Python compiled to We
 
 | Feature | CLI (`pygenomecomp`) | Web WASM |
 |---|---|---|
-| Alignment engine | BLAST+ (external binary) | Pure-Python k-mer aligner |
+| Alignment engine | BLAST+ (external binary) | lastz (via biowasm) |
 | Annotation formats | GFF3 + GenBank (BioPython) | GFF3 only (pure Python) |
-| Output | SVG file on disk | SVG rendered in browser + download |
+| Output | Circular SVG file on disk | Circular, Linear, and Alignment SVGs rendered in browser + download |
 | Dependencies | Python, BLAST+, biopython, pandas | None (self-contained) |
 
 ---
