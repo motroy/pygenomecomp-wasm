@@ -612,7 +612,9 @@ async function initPyodide() {
     const statusEl = document.getElementById('pyodide-status');
     statusEl.innerHTML = `<span class="pulse-dot inline-block w-2 h-2 rounded-full bg-yellow-400"></span> Loading Python runtime…`;
 
-    pyodide = await loadPyodide();
+    pyodide = await loadPyodide({
+      indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.27.0/full/'
+    });
 
     // Fetch and run the Python module
     const resp = await fetch('./pygenomecomp_wasm.py');
