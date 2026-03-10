@@ -1,0 +1,181 @@
+
+        <div id="svg-container" style="transform: translate(0px, 0px) scale(1);"><svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1000" height="920" viewBox="0 0 1000 920" style="width: 100%; height: auto;">
+<style>text { font-family: Arial, Helvetica, sans-serif; }</style>
+<defs>
+<linearGradient id="ig0" x1="0" y1="0" x2="1" y2="0">
+  <stop offset="0" stop-color="#f3a3a4"></stop>
+  <stop offset="0.33" stop-color="#ee7677"></stop>
+  <stop offset="0.66" stop-color="#e8484a"></stop>
+  <stop offset="1" stop-color="#e31a1c"></stop>
+</linearGradient>
+<linearGradient id="ig1" x1="0" y1="0" x2="1" y2="0">
+  <stop offset="0" stop-color="#afcbe2"></stop>
+  <stop offset="0.33" stop-color="#87b1d4"></stop>
+  <stop offset="0.66" stop-color="#5f98c6"></stop>
+  <stop offset="1" stop-color="#377eb8"></stop>
+</linearGradient>
+<linearGradient id="ig2" x1="0" y1="0" x2="1" y2="0">
+  <stop offset="0" stop-color="#b7dfb6"></stop>
+  <stop offset="0.33" stop-color="#94cf92"></stop>
+  <stop offset="0.66" stop-color="#71bf6e"></stop>
+  <stop offset="1" stop-color="#4daf4a"></stop>
+</linearGradient>
+<linearGradient id="ig3" x1="0" y1="0" x2="1" y2="0">
+  <stop offset="0" stop-color="#d5b8da"></stop>
+  <stop offset="0.33" stop-color="#c195c7"></stop>
+  <stop offset="0.66" stop-color="#ad72b5"></stop>
+  <stop offset="1" stop-color="#984ea3"></stop>
+</linearGradient>
+<linearGradient id="ig4" x1="0" y1="0" x2="1" y2="0">
+  <stop offset="0" stop-color="#ffcb99"></stop>
+  <stop offset="0.33" stop-color="#ffb266"></stop>
+  <stop offset="0.66" stop-color="#ff9934"></stop>
+  <stop offset="1" stop-color="#ff7f00"></stop>
+</linearGradient>
+<linearGradient id="ig5" x1="0" y1="0" x2="1" y2="0">
+  <stop offset="0" stop-color="#dbbba9"></stop>
+  <stop offset="0.33" stop-color="#c9997e"></stop>
+  <stop offset="0.66" stop-color="#b87853"></stop>
+  <stop offset="1" stop-color="#a65628"></stop>
+</linearGradient>
+<linearGradient id="ig6" x1="0" y1="0" x2="1" y2="0">
+  <stop offset="0" stop-color="#fbcce5"></stop>
+  <stop offset="0.33" stop-color="#fab3d8"></stop>
+  <stop offset="0.66" stop-color="#f89acc"></stop>
+  <stop offset="1" stop-color="#f781bf"></stop>
+</linearGradient>
+<linearGradient id="ig7" x1="0" y1="0" x2="1" y2="0">
+  <stop offset="0" stop-color="#d6d6d6"></stop>
+  <stop offset="0.33" stop-color="#c2c2c2"></stop>
+  <stop offset="0.66" stop-color="#adadad"></stop>
+  <stop offset="1" stop-color="#999999"></stop>
+</linearGradient>
+</defs>
+<rect width="1000" height="920" fill="white"></rect>
+<circle cx="450" cy="470" r="128.0" fill="white"></circle>
+<text x="450" y="458" text-anchor="middle" font-size="13" font-weight="bold" fill="#333">NDM151_IncHI2_contig1</text>
+<text x="450" y="480" text-anchor="middle" font-size="11" fill="#666">475,544 bp</text>
+<circle cx="450" cy="470" r="152.0" fill="none" stroke="#333" stroke-width="2"></circle>
+<path d="M 450.00 289.00 A 181.00 181.00 0 0 1 450.00 651.00 L 450.00 626.00 A 156.00 156.00 0 0 0 450.00 314.00 Z" fill="#fce8e8" stroke="none" stroke-width="0" opacity="1.00"></path>
+<path d="M 450.00 651.00 A 181.00 181.00 0 0 1 450.00 289.00 L 450.00 314.00 A 156.00 156.00 0 0 0 450.00 626.00 Z" fill="#fce8e8" stroke="none" stroke-width="0" opacity="1.00"></path>
+<circle cx="450" cy="470" r="156.0" fill="none" stroke="#ddd" stroke-width="0.5"></circle>
+<circle cx="450" cy="470" r="181.0" fill="none" stroke="#ddd" stroke-width="0.5"></circle>
+<path d="M 450.00 262.00 A 208.00 208.00 0 0 1 450.00 678.00 L 450.00 653.00 A 183.00 183.00 0 0 0 450.00 287.00 Z" fill="#ebf2f7" stroke="none" stroke-width="0" opacity="1.00"></path>
+<path d="M 450.00 678.00 A 208.00 208.00 0 0 1 450.00 262.00 L 450.00 287.00 A 183.00 183.00 0 0 0 450.00 653.00 Z" fill="#ebf2f7" stroke="none" stroke-width="0" opacity="1.00"></path>
+<circle cx="450" cy="470" r="183.0" fill="none" stroke="#ddd" stroke-width="0.5"></circle>
+<circle cx="450" cy="470" r="208.0" fill="none" stroke="#ddd" stroke-width="0.5"></circle>
+<path d="M 450.00 235.00 A 235.00 235.00 0 0 1 450.00 705.00 L 450.00 680.00 A 210.00 210.00 0 0 0 450.00 260.00 Z" fill="#edf7ec" stroke="none" stroke-width="0" opacity="1.00"></path>
+<path d="M 450.00 705.00 A 235.00 235.00 0 0 1 450.00 235.00 L 450.00 260.00 A 210.00 210.00 0 0 0 450.00 680.00 Z" fill="#edf7ec" stroke="none" stroke-width="0" opacity="1.00"></path>
+<circle cx="450" cy="470" r="210.0" fill="none" stroke="#ddd" stroke-width="0.5"></circle>
+<circle cx="450" cy="470" r="235.0" fill="none" stroke="#ddd" stroke-width="0.5"></circle>
+<path d="M 450.00 208.00 A 262.00 262.00 0 0 1 450.00 732.00 L 450.00 707.00 A 237.00 237.00 0 0 0 450.00 233.00 Z" fill="#f4edf5" stroke="none" stroke-width="0" opacity="1.00"></path>
+<path d="M 450.00 732.00 A 262.00 262.00 0 0 1 450.00 208.00 L 450.00 233.00 A 237.00 237.00 0 0 0 450.00 707.00 Z" fill="#f4edf5" stroke="none" stroke-width="0" opacity="1.00"></path>
+<circle cx="450" cy="470" r="237.0" fill="none" stroke="#ddd" stroke-width="0.5"></circle>
+<circle cx="450" cy="470" r="262.0" fill="none" stroke="#ddd" stroke-width="0.5"></circle>
+<path d="M 450.00 181.00 A 289.00 289.00 0 0 1 450.00 759.00 L 450.00 734.00 A 264.00 264.00 0 0 0 450.00 206.00 Z" fill="#fff2e5" stroke="none" stroke-width="0" opacity="1.00"></path>
+<path d="M 450.00 759.00 A 289.00 289.00 0 0 1 450.00 181.00 L 450.00 206.00 A 264.00 264.00 0 0 0 450.00 734.00 Z" fill="#fff2e5" stroke="none" stroke-width="0" opacity="1.00"></path>
+<circle cx="450" cy="470" r="264.0" fill="none" stroke="#ddd" stroke-width="0.5"></circle>
+<circle cx="450" cy="470" r="289.0" fill="none" stroke="#ddd" stroke-width="0.5"></circle>
+<path d="M 450.00 154.00 A 316.00 316.00 0 0 1 450.00 786.00 L 450.00 761.00 A 291.00 291.00 0 0 0 450.00 179.00 Z" fill="#f6eee9" stroke="none" stroke-width="0" opacity="1.00"></path>
+<path d="M 450.00 786.00 A 316.00 316.00 0 0 1 450.00 154.00 L 450.00 179.00 A 291.00 291.00 0 0 0 450.00 761.00 Z" fill="#f6eee9" stroke="none" stroke-width="0" opacity="1.00"></path>
+<circle cx="450" cy="470" r="291.0" fill="none" stroke="#ddd" stroke-width="0.5"></circle>
+<circle cx="450" cy="470" r="316.0" fill="none" stroke="#ddd" stroke-width="0.5"></circle>
+<path d="M 450.00 127.00 A 343.00 343.00 0 0 1 450.00 813.00 L 450.00 788.00 A 318.00 318.00 0 0 0 450.00 152.00 Z" fill="#fef2f8" stroke="none" stroke-width="0" opacity="1.00"></path>
+<path d="M 450.00 813.00 A 343.00 343.00 0 0 1 450.00 127.00 L 450.00 152.00 A 318.00 318.00 0 0 0 450.00 788.00 Z" fill="#fef2f8" stroke="none" stroke-width="0" opacity="1.00"></path>
+<circle cx="450" cy="470" r="318.0" fill="none" stroke="#ddd" stroke-width="0.5"></circle>
+<circle cx="450" cy="470" r="343.0" fill="none" stroke="#ddd" stroke-width="0.5"></circle>
+<path d="M 450.00 100.00 A 370.00 370.00 0 0 1 450.00 840.00 L 450.00 815.00 A 345.00 345.00 0 0 0 450.00 125.00 Z" fill="#f4f4f4" stroke="none" stroke-width="0" opacity="1.00"></path>
+<path d="M 450.00 840.00 A 370.00 370.00 0 0 1 450.00 100.00 L 450.00 125.00 A 345.00 345.00 0 0 0 450.00 815.00 Z" fill="#f4f4f4" stroke="none" stroke-width="0" opacity="1.00"></path>
+<circle cx="450" cy="470" r="345.0" fill="none" stroke="#ddd" stroke-width="0.5"></circle>
+<circle cx="450" cy="470" r="370.0" fill="none" stroke="#ddd" stroke-width="0.5"></circle>
+<path d="M 450.00 73.00 A 397.00 397.00 0 0 1 450.00 867.00 L 450.00 842.00 A 372.00 372.00 0 0 0 450.00 98.00 Z" fill="#fce8e8" stroke="none" stroke-width="0" opacity="1.00"></path>
+<path d="M 450.00 867.00 A 397.00 397.00 0 0 1 450.00 73.00 L 450.00 98.00 A 372.00 372.00 0 0 0 450.00 842.00 Z" fill="#fce8e8" stroke="none" stroke-width="0" opacity="1.00"></path>
+<circle cx="450" cy="470" r="372.0" fill="none" stroke="#ddd" stroke-width="0.5"></circle>
+<circle cx="450" cy="470" r="397.0" fill="none" stroke="#ddd" stroke-width="0.5"></circle>
+<path d="M 450.00 46.00 A 424.00 424.00 0 0 1 450.00 894.00 L 450.00 869.00 A 399.00 399.00 0 0 0 450.00 71.00 Z" fill="#ebf2f7" stroke="none" stroke-width="0" opacity="1.00"></path>
+<path d="M 450.00 894.00 A 424.00 424.00 0 0 1 450.00 46.00 L 450.00 71.00 A 399.00 399.00 0 0 0 450.00 869.00 Z" fill="#ebf2f7" stroke="none" stroke-width="0" opacity="1.00"></path>
+<circle cx="450" cy="470" r="399.0" fill="none" stroke="#ddd" stroke-width="0.5"></circle>
+<circle cx="450" cy="470" r="424.0" fill="none" stroke="#ddd" stroke-width="0.5"></circle>
+<path d="M 450.00 19.00 A 451.00 451.00 0 0 1 450.00 921.00 L 450.00 896.00 A 426.00 426.00 0 0 0 450.00 44.00 Z" fill="#edf7ec" stroke="none" stroke-width="0" opacity="1.00"></path>
+<path d="M 450.00 921.00 A 451.00 451.00 0 0 1 450.00 19.00 L 450.00 44.00 A 426.00 426.00 0 0 0 450.00 896.00 Z" fill="#edf7ec" stroke="none" stroke-width="0" opacity="1.00"></path>
+<circle cx="450" cy="470" r="426.0" fill="none" stroke="#ddd" stroke-width="0.5"></circle>
+<circle cx="450" cy="470" r="451.0" fill="none" stroke="#ddd" stroke-width="0.5"></circle>
+<path d="M 450.00 -8.00 A 478.00 478.00 0 0 1 450.00 948.00 L 450.00 923.00 A 453.00 453.00 0 0 0 450.00 17.00 Z" fill="#f4edf5" stroke="none" stroke-width="0" opacity="1.00"></path>
+<path d="M 450.00 948.00 A 478.00 478.00 0 0 1 450.00 -8.00 L 450.00 17.00 A 453.00 453.00 0 0 0 450.00 923.00 Z" fill="#f4edf5" stroke="none" stroke-width="0" opacity="1.00"></path>
+<circle cx="450" cy="470" r="453.0" fill="none" stroke="#ddd" stroke-width="0.5"></circle>
+<circle cx="450" cy="470" r="478.0" fill="none" stroke="#ddd" stroke-width="0.5"></circle>
+<path d="M 450.00 -35.00 A 505.00 505.00 0 0 1 450.00 975.00 L 450.00 950.00 A 480.00 480.00 0 0 0 450.00 -10.00 Z" fill="#fff2e5" stroke="none" stroke-width="0" opacity="1.00"></path>
+<path d="M 450.00 975.00 A 505.00 505.00 0 0 1 450.00 -35.00 L 450.00 -10.00 A 480.00 480.00 0 0 0 450.00 950.00 Z" fill="#fff2e5" stroke="none" stroke-width="0" opacity="1.00"></path>
+<circle cx="450" cy="470" r="480.0" fill="none" stroke="#ddd" stroke-width="0.5"></circle>
+<circle cx="450" cy="470" r="505.0" fill="none" stroke="#ddd" stroke-width="0.5"></circle>
+<path d="M 450.00 -62.00 A 532.00 532.00 0 0 1 450.00 1002.00 L 450.00 977.00 A 507.00 507.00 0 0 0 450.00 -37.00 Z" fill="#f6eee9" stroke="none" stroke-width="0" opacity="1.00"></path>
+<path d="M 450.00 1002.00 A 532.00 532.00 0 0 1 450.00 -62.00 L 450.00 -37.00 A 507.00 507.00 0 0 0 450.00 977.00 Z" fill="#f6eee9" stroke="none" stroke-width="0" opacity="1.00"></path>
+<circle cx="450" cy="470" r="507.0" fill="none" stroke="#ddd" stroke-width="0.5"></circle>
+<circle cx="450" cy="470" r="532.0" fill="none" stroke="#ddd" stroke-width="0.5"></circle>
+<circle cx="450" cy="470" r="532.0" fill="none" stroke="#999" stroke-width="1"></circle>
+<line x1="450.0" y1="-68.0" x2="450.0" y2="-78.0" stroke="#555" stroke-width="1"></line>
+<text x="450.0" y="-96.0" text-anchor="middle" font-size="10" fill="#555">0 kb</text>
+<line x1="719.0" y1="4.1" x2="724.0" y2="-4.6" stroke="#555" stroke-width="1"></line>
+<text x="733.0" y="-20.2" text-anchor="middle" font-size="10" fill="#555">40 kb</text>
+<line x1="915.9" y1="201.0" x2="924.6" y2="196.0" stroke="#555" stroke-width="1"></line>
+<text x="940.2" y="187.0" text-anchor="middle" font-size="10" fill="#555">79 kb</text>
+<line x1="988.0" y1="470.0" x2="998.0" y2="470.0" stroke="#555" stroke-width="1"></line>
+<text x="1016.0" y="470.0" text-anchor="middle" font-size="10" fill="#555">119 kb</text>
+<line x1="915.9" y1="739.0" x2="924.6" y2="744.0" stroke="#555" stroke-width="1"></line>
+<text x="940.2" y="753.0" text-anchor="middle" font-size="10" fill="#555">159 kb</text>
+<line x1="719.0" y1="935.9" x2="724.0" y2="944.6" stroke="#555" stroke-width="1"></line>
+<text x="733.0" y="960.2" text-anchor="middle" font-size="10" fill="#555">198 kb</text>
+<line x1="450.0" y1="1008.0" x2="450.0" y2="1018.0" stroke="#555" stroke-width="1"></line>
+<text x="450.0" y="1036.0" text-anchor="middle" font-size="10" fill="#555">238 kb</text>
+<line x1="181.0" y1="935.9" x2="176.0" y2="944.6" stroke="#555" stroke-width="1"></line>
+<text x="167.0" y="960.2" text-anchor="middle" font-size="10" fill="#555">277 kb</text>
+<line x1="-15.9" y1="739.0" x2="-24.6" y2="744.0" stroke="#555" stroke-width="1"></line>
+<text x="-40.2" y="753.0" text-anchor="middle" font-size="10" fill="#555">317 kb</text>
+<line x1="-88.0" y1="470.0" x2="-98.0" y2="470.0" stroke="#555" stroke-width="1"></line>
+<text x="-116.0" y="470.0" text-anchor="middle" font-size="10" fill="#555">357 kb</text>
+<line x1="-15.9" y1="201.0" x2="-24.6" y2="196.0" stroke="#555" stroke-width="1"></line>
+<text x="-40.2" y="187.0" text-anchor="middle" font-size="10" fill="#555">396 kb</text>
+<line x1="181.0" y1="4.1" x2="176.0" y2="-4.6" stroke="#555" stroke-width="1"></line>
+<text x="167.0" y="-20.2" text-anchor="middle" font-size="10" fill="#555">436 kb</text>
+<text x="845" y="50" font-weight="bold" font-size="14" fill="#333">Legend</text>
+<text x="845" y="77" font-weight="bold" font-size="11" fill="#555">Query Rings</text>
+<rect x="845" y="97" width="14" height="14" fill="#e31a1c" rx="2"></rect>
+<text x="866" y="109" font-size="10" fill="#333">NDM152_IncHI2_plas…</text>
+<rect x="845" y="119" width="14" height="14" fill="#377eb8" rx="2"></rect>
+<text x="866" y="131" font-size="10" fill="#333">NDM109_IncHI2_plas…</text>
+<rect x="845" y="141" width="14" height="14" fill="#4daf4a" rx="2"></rect>
+<text x="866" y="153" font-size="10" fill="#333">NDM153_IncHI2_plas…</text>
+<rect x="845" y="163" width="14" height="14" fill="#984ea3" rx="2"></rect>
+<text x="866" y="175" font-size="10" fill="#333">NDM156_IncHI2_plas…</text>
+<rect x="845" y="185" width="14" height="14" fill="#ff7f00" rx="2"></rect>
+<text x="866" y="197" font-size="10" fill="#333">NDM144_IncHI2_plas…</text>
+<rect x="845" y="207" width="14" height="14" fill="#a65628" rx="2"></rect>
+<text x="866" y="219" font-size="10" fill="#333">NDM146_IncHI2_plas…</text>
+<rect x="845" y="229" width="14" height="14" fill="#f781bf" rx="2"></rect>
+<text x="866" y="241" font-size="10" fill="#333">NDM101_IncHI2_plas…</text>
+<rect x="845" y="251" width="14" height="14" fill="#999999" rx="2"></rect>
+<text x="866" y="263" font-size="10" fill="#333">NDM116_IncHI2_plas…</text>
+<rect x="845" y="273" width="14" height="14" fill="#e31a1c" rx="2"></rect>
+<text x="866" y="285" font-size="10" fill="#333">NDM139_IncHI2_plas…</text>
+<rect x="845" y="295" width="14" height="14" fill="#377eb8" rx="2"></rect>
+<text x="866" y="307" font-size="10" fill="#333">NDM159_IncHI2_plas…</text>
+<rect x="845" y="317" width="14" height="14" fill="#4daf4a" rx="2"></rect>
+<text x="866" y="329" font-size="10" fill="#333">NDM117_IncHI2_plas…</text>
+<rect x="845" y="339" width="14" height="14" fill="#984ea3" rx="2"></rect>
+<text x="866" y="351" font-size="10" fill="#333">NDM104_IncHI2_plas…</text>
+<rect x="845" y="361" width="14" height="14" fill="#ff7f00" rx="2"></rect>
+<text x="866" y="373" font-size="10" fill="#333">NDM160_IncHI2_plas…</text>
+<rect x="845" y="383" width="14" height="14" fill="#a65628" rx="2"></rect>
+<text x="866" y="395" font-size="10" fill="#333">NDM121_IncHI2_plas…</text>
+<text x="845" y="411" font-weight="bold" font-size="11" fill="#555">% Identity</text>
+<rect x="845" y="431" width="100" height="12" fill="url(#ig0)" rx="2"></rect>
+<rect x="845" y="447" width="100" height="12" fill="url(#ig1)" rx="2"></rect>
+<rect x="845" y="463" width="100" height="12" fill="url(#ig2)" rx="2"></rect>
+<rect x="845" y="479" width="100" height="12" fill="url(#ig3)" rx="2"></rect>
+<rect x="845" y="495" width="100" height="12" fill="url(#ig4)" rx="2"></rect>
+<rect x="845" y="511" width="100" height="12" fill="url(#ig5)" rx="2"></rect>
+<rect x="845" y="527" width="100" height="12" fill="url(#ig6)" rx="2"></rect>
+<rect x="845" y="543" width="100" height="12" fill="url(#ig7)" rx="2"></rect>
+<text x="845" y="559" font-size="9" fill="#666">70%</text>
+<text x="920" y="559" font-size="9" fill="#666">100%</text>
+</svg></div>
