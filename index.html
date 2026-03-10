@@ -9,6 +9,8 @@
   <script src="https://cdn.tailwindcss.com"></script>
 
   <!-- Pyodide — Python in WASM (for delta parsing & SVG generation) -->
+  <!-- Preload the largest file so its download overlaps with JS parse/execute -->
+  <link rel="preload" href="https://cdn.jsdelivr.net/pyodide/v0.27.0/full/pyodide.asm.wasm" as="fetch" crossorigin>
   <script src="https://cdn.jsdelivr.net/pyodide/v0.27.0/full/pyodide.js"></script>
 
   <!-- biowasm Aioli — lastz in WASM (for sequence alignment) -->
@@ -1174,6 +1176,11 @@ initAioli();
 renderRefChips();
 renderQueryChips();
 renderAnnotChips();
+
+/* Register service worker to cache Pyodide files for instant repeat loads */
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('./sw.js').catch(() => {/* non-fatal */});
+}
 </script>
 
 <!-- Inline Python module (avoids a separate fetch on GitHub Pages) -->
