@@ -220,10 +220,10 @@
             <svg class="w-6 h-6 mx-auto mb-1 text-slate-300" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
               <path d="M9 17v-2m3 2v-4m3 4v-6M3 21h18M3 10l9-7 9 7"/>
             </svg>
-            Drop .fasta / .fa / .fna or <span class="text-blue-500 font-medium">click</span>
+            Drop .fasta / .fa / .fna / .gz or <span class="text-blue-500 font-medium">click</span>
           </div>
         </div>
-        <input type="file" id="ref-file" accept=".fasta,.fa,.fna,.txt" class="hidden"/>
+        <input type="file" id="ref-file" accept=".fasta,.fa,.fna,.txt,.fasta.gz,.fa.gz,.fna.gz,.gz" class="hidden"/>
         <div id="ref-chips" class="mt-2 flex flex-wrap gap-1"></div>
       </div>
 
@@ -243,7 +243,7 @@
             Drop files or <span class="text-blue-500 font-medium">click</span> (select multiple)
           </div>
         </div>
-        <input type="file" id="qry-file" accept=".fasta,.fa,.fna,.txt" multiple class="hidden"/>
+        <input type="file" id="qry-file" accept=".fasta,.fa,.fna,.txt,.fasta.gz,.fa.gz,.fna.gz,.gz" multiple class="hidden"/>
         <div id="qry-chips" class="mt-2 flex flex-wrap gap-1"></div>
       </div>
 
@@ -664,7 +664,16 @@ async function initAioli() {
 /* ------------------------------------------------------------------ */
 /* File helpers                                                         */
 /* ------------------------------------------------------------------ */
-function readFileAsText(file) {
+async function readFileAsText(file) {
+  if (file.name.endsWith('.gz')) {
+    try {
+      const ds = new DecompressionStream('gzip');
+      const decompressed = new Response(file.stream().pipeThrough(ds));
+      return await decompressed.text();
+    } catch (err) {
+      throw new Error('Failed to decompress gzip file: ' + file.name + ' — ' + err.message);
+    }
+  }
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload  = e => resolve(e.target.result);
@@ -705,7 +714,7 @@ function renderRefChips() {
     document.getElementById('ref-drop-inner').innerHTML =
       `<svg class="w-6 h-6 mx-auto mb-1 text-slate-300" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
          <path d="M9 17v-2m3 2v-4m3 4v-6M3 21h18M3 10l9-7 9 7"/>
-       </svg>Drop .fasta / .fa / .fna or <span class="text-blue-500 font-medium">click</span>`;
+       </svg>Drop .fasta / .fa / .fna / .gz or <span class="text-blue-500 font-medium">click</span>`;
   }
 }
 
