@@ -337,9 +337,27 @@ def generate_svg(blast_hits, annotations, reference_length, query_names,
     n_queries       = len(query_names)
     insertion_sites = insertion_sites or []
 
+    # Dynamically scale ring thickness/spacing so all rings fit within the SVG canvas.
+    # Available radius = distance from center to edge minus space for ticks and labels.
+    if n_queries > 0:
+        _tick_label_margin = 34  # pixels reserved outside rings for ticks + labels
+        _available_r = min(CENTER_X, CENTER_Y) - BLAST_HIT_BASE_RADIUS - _tick_label_margin
+        _total_default = (n_queries * BLAST_RING_THICKNESS
+                          + max(0, n_queries - 1) * BLAST_RING_SPACING)
+        if _total_default > _available_r:
+            _scale = _available_r / _total_default
+            blast_ring_thickness = max(2.0, BLAST_RING_THICKNESS * _scale)
+            blast_ring_spacing   = max(0.3, BLAST_RING_SPACING * _scale)
+        else:
+            blast_ring_thickness = BLAST_RING_THICKNESS
+            blast_ring_spacing   = BLAST_RING_SPACING
+    else:
+        blast_ring_thickness = BLAST_RING_THICKNESS
+        blast_ring_spacing   = BLAST_RING_SPACING
+
     outermost_r = (BLAST_HIT_BASE_RADIUS
-                   + n_queries * BLAST_RING_THICKNESS
-                   + max(0, n_queries - 1) * BLAST_RING_SPACING) if n_queries > 0 else REFERENCE_RING_RADIUS + 10
+                   + n_queries * blast_ring_thickness
+                   + max(0, n_queries - 1) * blast_ring_spacing) if n_queries > 0 else REFERENCE_RING_RADIUS + 10
     tick_inner = outermost_r + 6
     tick_outer = tick_inner + 10
     label_r    = tick_outer + 18
@@ -416,8 +434,8 @@ def generate_svg(blast_hits, annotations, reference_length, query_names,
 
     # --- Query ring backgrounds ---
     for i in range(n_queries):
-        ir = BLAST_HIT_BASE_RADIUS + i * (BLAST_RING_THICKNESS + BLAST_RING_SPACING)
-        or_ = ir + BLAST_RING_THICKNESS
+        ir = BLAST_HIT_BASE_RADIUS + i * (blast_ring_thickness + blast_ring_spacing)
+        or_ = ir + blast_ring_thickness
         out.append(_full_ring(CENTER_X, CENTER_Y, ir, or_, _ring_bg_color(i)))
         out.append(f'<circle cx="{CENTER_X}" cy="{CENTER_Y}" r="{ir:.1f}" fill="none" stroke="#ddd" stroke-width="0.5"/>\n')
         out.append(f'<circle cx="{CENTER_X}" cy="{CENTER_Y}" r="{or_:.1f}" fill="none" stroke="#ddd" stroke-width="0.5"/>\n')
@@ -425,8 +443,8 @@ def generate_svg(blast_hits, annotations, reference_length, query_names,
     # --- Alignment hit segments ---
     for hit in blast_hits:
         qi  = hit['query_index']
-        ir  = BLAST_HIT_BASE_RADIUS + qi * (BLAST_RING_THICKNESS + BLAST_RING_SPACING)
-        or_ = ir + BLAST_RING_THICKNESS
+        ir  = BLAST_HIT_BASE_RADIUS + qi * (blast_ring_thickness + blast_ring_spacing)
+        or_ = ir + blast_ring_thickness
         ss  = min(hit['sstart'], hit['send'])
         se  = max(hit['sstart'], hit['send'])
         sr  = ((ss - 1) / reference_length) * 2 * math.pi - math.pi / 2
@@ -441,8 +459,8 @@ def generate_svg(blast_hits, annotations, reference_length, query_names,
     INS_MIN_HW = 0.012
     for site in insertion_sites:
         qi  = site['query_index']
-        ir  = BLAST_HIT_BASE_RADIUS + qi * (BLAST_RING_THICKNESS + BLAST_RING_SPACING)
-        or_ = ir + BLAST_RING_THICKNESS
+        ir  = BLAST_HIT_BASE_RADIUS + qi * (blast_ring_thickness + blast_ring_spacing)
+        or_ = ir + blast_ring_thickness
         mid = (site['ref_position'] / reference_length) * 2 * math.pi - math.pi / 2
         hw  = max(INS_MIN_HW, (1.0 / reference_length) * 2 * math.pi)
         out.append(_arc(CENTER_X, CENTER_Y, ir, or_, mid-hw, mid+hw, INS_COLOR, 0.85))
@@ -466,8 +484,8 @@ def generate_svg(blast_hits, annotations, reference_length, query_names,
     # --- Outermost ring border ---
     if n_queries > 0:
         fr = (BLAST_HIT_BASE_RADIUS
-              + (n_queries - 1) * (BLAST_RING_THICKNESS + BLAST_RING_SPACING)
-              + BLAST_RING_THICKNESS)
+              + (n_queries - 1) * (blast_ring_thickness + blast_ring_spacing)
+              + blast_ring_thickness)
         out.append(f'<circle cx="{CENTER_X}" cy="{CENTER_Y}" r="{fr:.1f}" '
                    f'fill="none" stroke="#999" stroke-width="1"/>\n')
 
