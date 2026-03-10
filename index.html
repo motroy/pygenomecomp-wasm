@@ -142,7 +142,7 @@
       <div class="flex flex-col gap-0.5">
         <span id="pyodide-status" class="flex items-center gap-1.5 text-xs text-blue-200">
           <span class="pulse-dot inline-block w-2 h-2 rounded-full bg-yellow-400"></span>
-          Loading Python runtime…
+          Downloading Python runtime (~15 MB)…
         </span>
         <span id="aioli-status" class="flex items-center gap-1.5 text-xs text-blue-200">
           <span class="pulse-dot inline-block w-2 h-2 rounded-full bg-yellow-400"></span>
@@ -580,8 +580,9 @@ ref_contig_1\tProkka\ttRNA\t680\t720\t.\t+\t.\tID=trna01;product=tRNA-Met
 /* ------------------------------------------------------------------ */
 /* State                                                                */
 /* ------------------------------------------------------------------ */
-let pyodide      = null;
-let pyReady      = false;
+let pyodide           = null;
+let pyReady           = false;
+let pyodideInitPromise = null;  // resolves when Pyodide is ready (or fails)
 let CLI          = null;   // Aioli instance
 let aioliReady   = false;
 let refFile      = null;   // { name, content }
@@ -610,7 +611,7 @@ let isVisualizationRunning = false;
 async function initPyodide() {
   const statusEl = document.getElementById('pyodide-status');
   try {
-    statusEl.innerHTML = `<span class="pulse-dot inline-block w-2 h-2 rounded-full bg-yellow-400"></span> Downloading Python runtime…`;
+    statusEl.innerHTML = `<span class="pulse-dot inline-block w-2 h-2 rounded-full bg-yellow-400"></span> Downloading Python runtime (~15 MB)…`;
 
     pyodide = await loadPyodide({
       indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.27.0/full/'
@@ -830,7 +831,7 @@ document.getElementById('settings-toggle').addEventListener('click', () => {
 /* ------------------------------------------------------------------ */
 function updateRunButton() {
   const btn = document.getElementById('btn-run');
-  btn.disabled = !(pyReady && aioliReady && refFile && queryFiles.length > 0);
+  btn.disabled = !(aioliReady && refFile && queryFiles.length > 0);
 }
 
 /* ------------------------------------------------------------------ */
@@ -993,6 +994,13 @@ document.getElementById('btn-run').addEventListener('click', async () => {
     cachedRefContent     = refFile.content;
     cachedQueryFileNames = queryFiles.map(q => q.name);
     cachedAnnotContent   = annotFile ? annotFile.content : '';
+
+    // ── Wait for Python runtime if still downloading ─────────────────
+    if (!pyReady) {
+      setProgress(nQueries + 1, totalSteps, 'Waiting for Python runtime to finish downloading…');
+      await pyodideInitPromise;
+      if (!pyReady) throw new Error('Python runtime failed to load. Check your network connection and reload the page.');
+    }
 
     // ── Python processing & plotting ────────────────────────────────
     setProgress(nQueries + 1, totalSteps, 'Processing alignments…');
@@ -1161,7 +1169,7 @@ document.getElementById('btn-load-demo').addEventListener('click', () => {
 /* ------------------------------------------------------------------ */
 /* Boot — initialize both engines in parallel                          */
 /* ------------------------------------------------------------------ */
-initPyodide();
+pyodideInitPromise = initPyodide();
 initAioli();
 renderRefChips();
 renderQueryChips();
