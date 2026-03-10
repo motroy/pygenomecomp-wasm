@@ -147,17 +147,13 @@ def download_assembly_fasta_ena(accession: str, outpath: Path) -> bool:
     Works for ERZ* and GCA* accessions stored in ENA.
     """
     # Try ENA FTP structure
-    # For GCA accessions: convert to ENA URL
-    if accession.startswith("GCA_"):
-        # Use NCBI datasets API as fallback (see below)
-        return False
 
     # ERZ style
     url = (
         f"https://www.ebi.ac.uk/ena/browser/api/fasta/{accession}"
         "?download=true&gzip=true"
     )
-    return _stream_download(url, outpath)
+    return _stream_download(url, outpath, gzipped=True)
 
 
 def download_assembly_fasta_ncbi(accession: str, outpath: Path) -> bool:
@@ -234,16 +230,23 @@ def _stream_download(url: str, outpath: Path, gzipped: bool = False) -> bool:
     try:
         r = requests.get(url, stream=True, timeout=120)
         r.raise_for_status()
-        tmp = outpath.with_suffix(".tmp")
-        with open(tmp, "wb") as f:
-            for chunk in r.iter_content(65536):
-                f.write(chunk)
         if gzipped:
-            subprocess.run(["gunzip", "-f", str(tmp)], check=True)
-            tmp_ungz = tmp.with_suffix("")  # removes .tmp → but we need .fna
-            tmp_ungz.rename(outpath)
+            # Download to a temporary file with .gz extension for gunzip
+            temp_gzipped_path = outpath.parent / (outpath.name + ".gz.tmp")
+            with open(temp_gzipped_path, "wb") as f:
+                for chunk in r.iter_content(65536):
+                    f.write(chunk)
+            # Decompress the gzipped file content directly to the final outpath
+            with open(outpath, "wb") as f_out:
+                subprocess.run(["gunzip", "-c", str(temp_gzipped_path)], stdout=f_out, check=True)
+            temp_gzipped_path.unlink() # Delete the temporary gzipped file
         else:
-            tmp.rename(outpath)
+            # Download directly to a temporary file and then rename
+            temp_path = outpath.with_suffix(".tmp")
+            with open(temp_path, "wb") as f:
+                for chunk in r.iter_content(65536):
+                    f.write(chunk)
+            temp_path.rename(outpath)
         return True
     except Exception as e:
         print(f"  [WARN] Download failed from {url}: {e}")
@@ -411,17 +414,256 @@ def run(outdir: Path, email: str, skip_existing: bool = True):
             continue
 
         print(f"  Downloading {name} ({acc}) ...", end=" ", flush=True)
-
-        success = False
-        if acc.startswith("ERZ") or acc.startswith("ERS"):
-            success = download_assembly_fasta_ena(acc, fasta_out)
+        success = download_assembly_fasta_ena(acc, fasta_out)
         if not success:
             success = download_assembly_fasta_ncbi(acc, fasta_out)
-
         if success:
-            print(f"OK → {fasta_out.name}")
+            print(f"OK -> {fasta_out.name}")
         else:
-            print(f"FAILED — try manual download from:")
+            print(f"FAILED - try manual download from:")
+            print(f"    https://www.ebi.ac.uk/ena/browser/view/{biosample}")
+        time.sleep(1)
+
+    print("\n=== Step 3: Extract IncHI2/IncHI2A plasmid contig(s) ===\n")
+    for name, biosample in ALL_ISOLATES:
+        accs = accession_map.get(name, [])
+        if not accs:
+            continue
+        acc = accs[0]
+        fasta_in = asm_dir / f"{name}_{acc}_genomic.fna"
+        if not fasta_in.exists():
+            print(f"  [SKIP] {name}: assembly not downloaded")
+            continue
+
+        plasmid_fasta = plasmid_dir / f"{name}_IncHI2_plasmid.fna"
+        if skip_existing and plasmid_fasta.exists():
+            print(f"  [SKIP] {name}: plasmid FASTA already exists")
+            manifest[name] = plasmid_fasta
+            continue
+
+        contigs = find_inchi2_plasmid_contigs(fasta_in, name, use_blast=True)
+        if contigs:
+            # Rename record for clarity
+            for i, rec in enumerate(contigs):
+                rec.id = f"{name}_IncHI2_contig{i+1}"
+                rec.description = f"{name} IncHI2/IncHI2A plasmid contig {i+1}"
+            SeqIO.write(contigs, plasmid_fasta, "fasta")
+            manifest[name] = plasmid_fasta
+
+    print("\n=== Step 4: Summary — files ready for pygenomecomp-wasm ===\n")
+    ref_path = manifest.get(REFERENCE["name"])
+    query_paths = [manifest.get(q[0]) for q in QUERIES]
+
+    print(f"  Reference FASTA (upload as 'Reference Genome'):")
+    if ref_path and ref_path.exists():
+        size_kb = ref_path.stat().st_size // 1024
+        print(f"    ✓ {ref_path}  ({size_kb} KB)")
+    else:
+        print(f"    ✗ NDM151 plasmid FASTA not generated — check download")
+
+    print(f"\n  Query FASMTAs (upload as 'Query Genomes', in this order = inner→outer):")
+    for i, (q, path) in enumerate(zip(QUERIES, query_paths)):
+        name, biosample, species, month = q
+        if path and path.exists():
+            size_kb = path.stat().st_size // 1024
+            print(f"    Ring {i+1:2d}  ✓  {path.name}  — {name} ({species}) {month}")
+        else:
+            print(f"    Ring {i+1:2d}  ✗  {name} ({species}) {month} — missing")
+
+    print("\n  Recommended pygenomecomp-wasm settings:")
+    print("    Mode:              Circular")
+    print("    Min Identity:      70%")
+    print("    Min Coverage:      0%")
+    print("    Min Alignment Len: 500 bp")
+    print("\n  Then upload the reference + all query FASTAs, click 'Run Comparison',")
+    print("  and download the SVG.\n")
+
+    # Write a combined multi-FASTA of all queries (optional convenience)
+    combined = plasmid_dir / "ALL_QUERIES_IncHI2_plasmids.fna"
+    all_q_records = []
+    for q, path in zip(QUERIES, query_paths):
+        if path and path.exists():
+            all_q_records.extend(SeqIO.parse(path, "fasta"))
+    if all_q_records:
+        SeqIO.write(all_q_records, combined, "fasta")
+        print(f"  Combined query FASTA (all queries in one file):")
+        print(f"    {combined}\n")
+
+    return manifest
+
+
+# ---------------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------------
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+        description="Fetch NDM IncHI2 plasmid sequences for pygenomecomp-wasm Figure 7"
+    )
+    parser.add_argument(
+        "--outdir", default="ndm_plasmid_figure7",
+        help="Output directory (default: ndm_plasmid_figure7)"
+    )
+    parser.add_argument(
+        "--email", default="motroy@post.bgu.ac.il",
+        help="Email for NCBI Entrez (required by NCBI policy)"
+    )
+    parser.add_argument(
+        "--no-skip", action="store_true",
+        help="Re-download even if files already exist"
+    )
+    args = parser.parse_args()
+
+    run(
+        outdir=Path(args.outdir),
+        email=args.email,
+        skip_existing=not args.no_skip,
+    )
+def find_inchi2_plasmid_contigs(
+    fasta_path: Path,
+    isolate_name: str,
+    use_blast: bool = True,
+) -> list:
+    """
+    Return SeqRecord(s) that are likely the IncHI2/IncHI2A plasmid.
+    Priority:
+      1. blastn hit against blaNDM-1 AND IncHI2 rep seed on same contig
+      2. blastn hit against blaNDM-1 on a contig in size range
+      3. Size-only filter (150–500 kb contigs)
+    """
+    records = list(SeqIO.parse(fasta_path, "fasta"))
+    if not records:
+        print(f"  [WARN] {isolate_name}: empty FASTA")
+        return []
+
+    # ---- Strategy 1/2: blastn ----
+    if use_blast and _blast_available():
+        hits_ndm = _blast_seed(BLANDM1_SEED, fasta_path, "blaNDM1_seed.fa")
+        hits_rep = _blast_seed(INCHI2_REP_SEED, fasta_path, "IncHI2rep_seed.fa")
+
+        # Contigs with NDM hit + rep hit → strongest evidence
+        both = set(hits_ndm) & set(hits_rep)
+        if both:
+            selected = [r for r in records if r.id in both]
+            print(f"  {isolate_name}: {len(selected)} contig(s) — NDM+IncHI2 rep hit")
+            return selected
+
+        # NDM hit alone
+        if hits_ndm:
+            selected = [r for r in records if r.id in hits_ndm]
+            print(f"  {isolate_name}: {len(selected)} contig(s) — blaNDM-1 hit only")
+            return selected
+
+    # ---- Strategy 3: size filter ----
+    sized = [
+        r for r in records
+        if INCHI2_SIZE_MIN <= len(r.seq) <= INCHI2_SIZE_MAX
+    ]
+    if sized:
+        print(
+            f"  {isolate_name}: {len(sized)} contig(s) — "
+            f"size filter ({INCHI2_SIZE_MIN//1000}–{INCHI2_SIZE_MAX//1000} kb)"
+        )
+        return sized
+
+    # Last resort: largest contig
+    biggest = sorted(records, key=lambda r: len(r.seq), reverse=True)[0]
+    print(
+        f"  [WARN] {isolate_name}: no IncHI2 evidence found — "
+        f"using largest contig ({len(biggest.seq)//1000} kb)"
+    )
+    return [biggest]
+
+
+def _blast_available() -> bool:
+    try:
+        subprocess.run(["blastn", "-version"], capture_output=True, check=True)
+        return True
+    except (FileNotFoundError, subprocess.CalledProcessError):
+        return False
+
+
+def _blast_seed(seed_seq: str, fasta_path: Path, seed_filename: str) -> set[str]:
+    """Write seed, run blastn, return set of matching subject contig IDs."""
+    tmp_seed = Path(f"/tmp/{seed_filename}")
+    tmp_seed.write_text(seed_seq)
+    tmp_out = Path(f"/tmp/blast_out_{fasta_path.stem}.txt")
+    try:
+        subprocess.run(
+            [
+                "blastn", "-query", str(tmp_seed),
+                "-subject", str(fasta_path),
+                "-outfmt", "6 sseqid pident length",
+                "-perc_identity", "80",
+                "-out", str(tmp_out),
+                "-dust", "no",
+            ],
+            capture_output=True, check=True, timeout=120
+        )
+        hits = set()
+        for line in tmp_out.read_text().splitlines():
+            parts = line.split("\t")
+            if len(parts) >= 3 and int(parts[2]) >= 100:
+                hits.add(parts[0])
+        return hits
+    except Exception:
+        return set()
+
+
+# ---------------------------------------------------------------------------
+# Main pipeline
+# ---------------------------------------------------------------------------
+
+def run(outdir: Path, email: str, skip_existing: bool = True):
+    outdir.mkdir(parents=True, exist_ok=True)
+    asm_dir = outdir / "assemblies"
+    asm_dir.mkdir(exist_ok=True)
+    plasmid_dir = outdir / "plasmid_fastas"
+    plasmid_dir.mkdir(exist_ok=True)
+
+    manifest = {}  # name → plasmid fasta path
+
+    print("\n=== Step 1: Resolve BioSample → Assembly accession ===\n")
+    accession_map = {}  # isolate_name → [accessions]
+    for name, biosample in ALL_ISOLATES:
+        print(f"  {name} ({biosample}) ...", end=" ", flush=True)
+        accs = biosample_to_assembly_ena(biosample)
+        if not accs:
+            accs = biosample_to_assembly_ncbi(biosample, email)
+        if accs:
+            accession_map[name] = accs
+            print(f"→ {accs}")
+        else:
+            print("→ NOT FOUND (manual download needed)")
+        time.sleep(0.3)  # be polite to APIs
+
+    # Save manifest
+    (outdir / "accession_map.json").write_text(
+        json.dumps(accession_map, indent=2)
+    )
+
+    print("\n=== Step 2: Download assemblies ===\n")
+    for name, biosample in ALL_ISOLATES:
+        accs = accession_map.get(name, [])
+        if not accs:
+            print(f"  [SKIP] {name}: no accession found")
+            continue
+
+        acc = accs[0]  # use first (usually best-quality) assembly
+        fasta_out = asm_dir / f"{name}_{acc}_genomic.fna"
+
+        if skip_existing and fasta_out.exists():
+            print(f"  [SKIP] {name}: {fasta_out.name} already exists")
+            continue
+
+        print(f"  Downloading {name} ({acc}) ...", end=" ", flush=True)
+        success = download_assembly_fasta_ena(acc, fasta_out)
+        if not success:
+            success = download_assembly_fasta_ncbi(acc, fasta_out)
+        if success:
+            print(f"OK -> {fasta_out.name}")
+        else:
+            print(f"FAILED - try manual download from:")
             print(f"    https://www.ebi.ac.uk/ena/browser/view/{biosample}")
         time.sleep(1)
 
