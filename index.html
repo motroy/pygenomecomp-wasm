@@ -200,6 +200,69 @@
       </button>
     </div>
 
+    <!-- Real-World Example card -->
+    <div class="bg-white rounded-xl shadow-sm border border-emerald-200 p-5">
+      <h2 class="font-bold text-slate-700 mb-2 flex items-center gap-2">
+        <svg class="w-4 h-4 text-emerald-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path d="M9 3H5a2 2 0 00-2 2v4m6-6h10a2 2 0 012 2v4M9 3v18m0 0h10a2 2 0 002-2V9M9 21H5a2 2 0 01-2-2V9m0 0h18"/>
+        </svg>
+        Real-World Example: NDM Plasmids
+      </h2>
+      <p class="text-sm text-slate-600 leading-relaxed mb-3">
+        Six IncHI2 plasmids carrying <em>blaNDM</em> resistance from a nosocomial outbreak
+        study, spanning five bacterial species collected 2023.
+        Reference: <strong>NDM152</strong> (<em>C. freundii</em>).
+        Queries: NDM101, NDM121, NDM139, NDM144, NDM156.
+      </p>
+
+      <!-- Thumbnail of published figure -->
+      <a href="./examples/ndm-plasmids/F7.large.jpg" target="_blank" rel="noopener"
+         class="block mb-3 rounded-lg overflow-hidden border border-slate-200 hover:border-emerald-400 transition-colors"
+         title="Published figure — click to view full size">
+        <img src="./examples/ndm-plasmids/F7.large.jpg"
+             alt="Published BRIG-style circular plot of NDM IncHI2 plasmids (NDM151 reference, 14 queries)"
+             class="w-full object-cover" style="max-height:160px;object-position:center top">
+        <p class="text-center text-xs text-slate-400 py-1 bg-slate-50">
+          Published figure (NDM151 ref, 14 queries) — click for full size
+        </p>
+      </a>
+
+      <!-- Species table -->
+      <div class="mb-3 text-xs rounded-lg overflow-hidden border border-slate-100">
+        <table class="w-full">
+          <thead>
+            <tr class="bg-slate-50 text-slate-500 uppercase tracking-wider">
+              <th class="text-left px-2 py-1.5">Role</th>
+              <th class="text-left px-2 py-1.5">Isolate</th>
+              <th class="text-left px-2 py-1.5">Species</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-100">
+            <tr class="bg-emerald-50">
+              <td class="px-2 py-1 font-semibold text-emerald-700">Reference</td>
+              <td class="px-2 py-1 font-mono">NDM152</td>
+              <td class="px-2 py-1 italic">C. freundii</td>
+            </tr>
+            <tr><td class="px-2 py-1 text-slate-400">Query 1</td><td class="px-2 py-1 font-mono">NDM101</td><td class="px-2 py-1 italic">En. hormaechei</td></tr>
+            <tr class="bg-slate-50"><td class="px-2 py-1 text-slate-400">Query 2</td><td class="px-2 py-1 font-mono">NDM121</td><td class="px-2 py-1 italic">En. hormaechei</td></tr>
+            <tr><td class="px-2 py-1 text-slate-400">Query 3</td><td class="px-2 py-1 font-mono">NDM139</td><td class="px-2 py-1 italic">K. pneumoniae</td></tr>
+            <tr class="bg-slate-50"><td class="px-2 py-1 text-slate-400">Query 4</td><td class="px-2 py-1 font-mono">NDM144</td><td class="px-2 py-1 italic">K. pneumoniae</td></tr>
+            <tr><td class="px-2 py-1 text-slate-400">Query 5</td><td class="px-2 py-1 font-mono">NDM156</td><td class="px-2 py-1 italic">E. coli</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <button id="btn-load-ndm"
+              class="w-full text-sm bg-gradient-to-r from-emerald-500 to-teal-600 text-white
+                     font-semibold rounded-lg py-2 px-4 hover:from-emerald-600 hover:to-teal-700
+                     transition-all shadow-sm flex items-center justify-center gap-2">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1M12 12V4M8 8l4-4 4 4"/>
+        </svg>
+        Load Real-World Example
+      </button>
+    </div>
+
     <!-- Upload card -->
     <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5 flex flex-col gap-5">
       <h2 class="font-bold text-slate-700 flex items-center gap-2">
@@ -1182,6 +1245,52 @@ document.getElementById('btn-load-demo').addEventListener('click', () => {
   renderQueryChips();
   renderAnnotChips();
   updateRunButton();
+});
+
+/* ------------------------------------------------------------------ */
+/* Real-world NDM plasmid example loader                               */
+/* ------------------------------------------------------------------ */
+document.getElementById('btn-load-ndm').addEventListener('click', async () => {
+  const btn = document.getElementById('btn-load-ndm');
+  const origHTML = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = `<svg class="spinner w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+    <circle cx="12" cy="12" r="10" stroke-opacity="0.25"/><path d="M12 2a10 10 0 0110 10" stroke-linecap="round"/>
+  </svg> Fetching files…`;
+
+  const BASE = './examples/ndm-plasmids/';
+  const REF  = 'NDM152_IncHI2_plasmid.fna';
+  const QUERIES = [
+    'NDM101_IncHI2_plasmid.fna',
+    'NDM121_IncHI2_plasmid.fna',
+    'NDM139_IncHI2_plasmid.fna',
+    'NDM144_IncHI2_plasmid.fna',
+    'NDM156_IncHI2_plasmid.fna',
+  ];
+
+  try {
+    const responses = await Promise.all(
+      [REF, ...QUERIES].map(f => fetch(BASE + f).then(r => {
+        if (!r.ok) throw new Error(`Failed to fetch ${f}: ${r.status}`);
+        return r.text();
+      }))
+    );
+    refFile    = { name: REF, content: responses[0] };
+    queryFiles = QUERIES.map((f, i) => ({ name: f, content: responses[i + 1] }));
+    annotFile  = null;
+    renderRefChips();
+    renderQueryChips();
+    renderAnnotChips();
+    updateRunButton();
+    btn.disabled = false;
+    btn.innerHTML = origHTML;
+  } catch (err) {
+    console.error('NDM example fetch failed:', err);
+    btn.disabled = false;
+    btn.innerHTML = origHTML;
+    document.getElementById('error-card').textContent = 'Could not fetch example files: ' + err.message;
+    document.getElementById('error-card').classList.remove('hidden');
+  }
 });
 
 /* ------------------------------------------------------------------ */
