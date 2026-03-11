@@ -407,6 +407,17 @@
           <span class="text-sm text-slate-600">Show gene names on plot</span>
         </label>
 
+        <!-- Show resistance gene names only -->
+        <label class="flex items-center gap-3 cursor-pointer select-none ml-6" id="label-res-genes" style="display:none; opacity: 0.7;">
+          <div class="relative">
+            <input type="checkbox" id="show-res-genes" class="sr-only peer" disabled/>
+            <div class="w-10 h-5 bg-slate-200 rounded-full peer-checked:bg-blue-600 transition-colors"></div>
+            <div class="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow
+                        transition-transform peer-checked:translate-x-5"></div>
+          </div>
+          <span class="text-sm text-slate-600">Resistance genes only</span>
+        </label>
+
         <!-- Show insertions -->
         <label class="flex items-center gap-3 cursor-pointer select-none"
                data-tip="Show insertion site markers where query has sequence absent from reference">
@@ -894,7 +905,24 @@ document.getElementById('min-coverage').addEventListener('input', function() {
   scheduleReplot();
 });
 document.getElementById('min-length').addEventListener('change', scheduleReplot);
-document.getElementById('show-gene-names').addEventListener('change', scheduleReplot);
+document.getElementById('show-gene-names').addEventListener('change', function() {
+  const isChecked = this.checked;
+  const label = document.getElementById('label-res-genes');
+  const checkbox = document.getElementById('show-res-genes');
+
+  if (isChecked) {
+    label.style.display = 'flex';
+    label.style.opacity = '1';
+    checkbox.disabled = false;
+  } else {
+    label.style.display = 'none';
+    label.style.opacity = '0.7';
+    checkbox.disabled = true;
+    checkbox.checked = false;
+  }
+  scheduleReplot();
+});
+document.getElementById('show-res-genes').addEventListener('change', scheduleReplot);
 document.getElementById('show-insertions').addEventListener('change', scheduleReplot);
 
 let settingsOpen = true;
@@ -953,6 +981,7 @@ def _run():
             min_length             = int(_min_length),
             show_gene_names        = bool(_show_gene_names),
             show_insertions        = bool(_show_insertions),
+            show_res_genes         = bool(_show_res_genes),
             progress_callback      = _cb,
         )
     except Exception as e:
@@ -974,6 +1003,7 @@ async function runPythonVisualization(preserveView = true) {
     const minCoverage    = parseFloat(document.getElementById('min-coverage').value);
     const minLength      = parseInt(document.getElementById('min-length').value, 10);
     const showGenes      = document.getElementById('show-gene-names').checked;
+    const showResGenes   = document.getElementById('show-res-genes').checked;
     const showInsertions = document.getElementById('show-insertions').checked;
 
     pyodide.globals.set('_ref_text',              cachedRefContent);
@@ -984,6 +1014,7 @@ async function runPythonVisualization(preserveView = true) {
     pyodide.globals.set('_min_coverage',          minCoverage);
     pyodide.globals.set('_min_length',            minLength);
     pyodide.globals.set('_show_gene_names',       showGenes);
+    pyodide.globals.set('_show_res_genes',        showResGenes);
     pyodide.globals.set('_show_insertions',       showInsertions);
     pyodide.globals.set('_js_progress',           () => {});
 
