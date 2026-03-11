@@ -954,7 +954,7 @@ function setProgress(step, total, msg, detail) {
 }
 function showError(msg) {
   const el = document.getElementById('error-card');
-  el.textContent = '⚠ ' + msg;
+  el.innerText = '⚠ ' + msg;
   el.classList.remove('hidden');
 }
 function clearError() {
@@ -1133,8 +1133,7 @@ document.getElementById('btn-run').addEventListener('click', async () => {
 
   } catch (err) {
     showProgress(false);
-    const msg = String(err).split('\n')[0].replace('PythonError:', '').trim();
-    showError(msg);
+    showError(String(err));
     console.error(err);
   } finally {
     updateRunButton();
@@ -1351,6 +1350,7 @@ No external Python dependencies required.
 """
 import math
 import json
+import re
 
 # ============================================================
 # FASTA Parser
@@ -1646,6 +1646,41 @@ def _ring_bg_color(qi):
 def _annotation_color(ftype):
     return ANNOTATION_COLORS.get(ftype.lower(), DEFAULT_ANNOTATION_COLOR)
 
+def _is_resistance_gene(feat):
+    """Check if an annotation feature is a resistance gene based on its product or attributes."""
+    if feat.get('feature_type', '').lower() not in ('cds', 'gene'):
+        return False
+    attrs = feat.get('attributes', {})
+    product = attrs.get('product', '').lower()
+    name = attrs.get('Name', '').lower()
+    note = attrs.get('note', '').lower()
+
+    # Common resistance keywords or patterns
+    # These often include 'bla', 'ndm', 'kpc', 'oxa', 'tet', 'sul', 'mcr', etc.
+    res_keywords = [
+        'resistance', 'beta-lactamase', 'carbapenemase', 'efflux',
+        'antibiotic', 'antimicrobial', 'aminoglycoside', 'tetracycline',
+        'macrolide', 'chloramphenicol', 'sulfonamide', 'trimethoprim',
+        'quinolone'
+    ]
+
+    # Also check if the gene name looks like a common AMR gene (e.g. blaNDM, tetA, sul1)
+    short_gene_pattern = re.compile(r'^(bla|tet|sul|aad|aph|aac|erm|mef|msr|lnu|vat|vga|dfr|qnr|mcr|cat|flo|cml)[a-z0-9-]*$', re.IGNORECASE)
+
+    text_to_search = f"{product} {name} {note}"
+
+    if any(kw in text_to_search for kw in res_keywords):
+        return True
+
+    if name and short_gene_pattern.match(name):
+        return True
+
+    # Check ontology terms for AMR-related GO terms if present
+    if 'GO:0046677' in attrs.get('Ontology_term', ''): # response to antibiotic
+        return True
+
+    return False
+
 def _arc_path(cx, cy, ri, ro, s, e):
     large = 1 if abs(e - s) > math.pi else 0
     xso = cx + ro * math.cos(s);  yso = cy + ro * math.sin(s)
@@ -1676,7 +1711,8 @@ def _full_ring(cx, cy, ri, ro, fill, opacity=1.0):
 
 def generate_svg(blast_hits, annotations, reference_length, query_names,
                  reference_display_name, show_gene_names=False,
-                 insertion_sites=None, show_insertions=True, min_identity=70.0):
+                 insertion_sites=None, show_insertions=True, min_identity=70.0,
+                 show_res_genes=False):
     """Generate a BRIG-style circular SVG and return it as a string."""
     if reference_length == 0:
         raise ValueError("Reference length cannot be zero.")
@@ -1746,6 +1782,11 @@ def generate_svg(blast_hits, annotations, reference_length, query_names,
                               ANNOTATION_RING_RADIUS_INNER, ANNOTATION_RING_RADIUS_OUTER,
                               '#f0f0f0'))
         for feat in annotations:
+            ftype = feat['feature_type'].lower()
+            if ftype not in ('cds', 'gene', 'trna', 'rrna'):
+                continue
+            if show_res_genes and not _is_resistance_gene(feat):
+                continue
             ms = feat['start'] - 1
             me = feat['end']
             sr = (ms / reference_length) * 2 * math.pi - math.pi / 2
@@ -1897,11 +1938,21 @@ def generate_svg(blast_hits, annotations, reference_length, query_names,
     if annotations:
         out.append(f'<text x="{lx}" y="{ly}" font-weight="bold" font-size="11" fill="#555">Annotations</text>\n')
         ly += ih - 2
+
+        seen_types = set()
+        for feat in annotations:
+            ft = feat['feature_type'].lower()
+            if ft in ('cds', 'gene', 'trna', 'rrna') and ft not in seen_types:
+                if show_res_genes and not _is_resistance_gene(feat):
+                    continue
+                seen_types.add(ft)
+
         for label, ftype in (('CDS','cds'),('Gene','gene'),('tRNA','trna'),('rRNA','rrna')):
-            c = _annotation_color(ftype)
-            out.append(f'<rect x="{lx}" y="{ly}" width="{bs}" height="{bs}" fill="{c}" rx="2"/>\n')
-            out.append(f'<text x="{lx+bs+7}" y="{ly+bs-2}" font-size="10" fill="#333">{label}</text>\n')
-            ly += ih
+            if ftype in seen_types:
+                c = _annotation_color(ftype)
+                out.append(f'<rect x="{lx}" y="{ly}" width="{bs}" height="{bs}" fill="{c}" rx="2"/>\n')
+                out.append(f'<text x="{lx+bs+7}" y="{ly+bs-2}" font-size="10" fill="#333">{label}</text>\n')
+                ly += ih
 
     out.append('</svg>')
     return ''.join(out)
@@ -1913,7 +1964,7 @@ def generate_svg(blast_hits, annotations, reference_length, query_names,
 
 def generate_linear_svg(blast_hits, annotations, reference_length, reference_name,
                         query_names, show_gene_names=False, min_identity=70.0,
-                        insertion_sites=None, show_insertions=True):
+                        insertion_sites=None, show_insertions=True, show_res_genes=False):
     """Generate a linear (Mauve-style) alignment view SVG and return it as a string.
 
     Sequences are stacked as horizontal tracks. Alignment ribbons connect aligned
@@ -2074,6 +2125,8 @@ def generate_linear_svg(blast_hits, annotations, reference_length, reference_nam
             ftype = feat['feature_type'].lower()
             if ftype not in ('cds', 'gene', 'trna', 'rrna'):
                 continue
+            if show_res_genes and not _is_resistance_gene(feat):
+                continue
             ax1 = LEFT + (feat['start'] - 1) / reference_length * CONTENT_W
             ax2 = LEFT + feat['end']           / reference_length * CONTENT_W
             aw  = ax2 - ax1
@@ -2174,6 +2227,8 @@ def generate_linear_svg(blast_hits, annotations, reference_length, reference_nam
         for feat in annotations:
             ft = feat['feature_type'].lower()
             if ft in ('cds', 'gene', 'trna', 'rrna') and ft not in seen:
+                if show_res_genes and not _is_resistance_gene(feat):
+                    continue
                 ann_types.append(ft)
                 seen.add(ft)
         for ft in ann_types:
@@ -2255,7 +2310,7 @@ def generate_linear_svg(blast_hits, annotations, reference_length, reference_nam
 
 def generate_alignment_svg(blast_hits, annotations, reference_length, reference_name,
                            query_names, show_gene_names=False, min_identity=70.0,
-                           insertion_sites=None, show_insertions=True):
+                           insertion_sites=None, show_insertions=True, show_res_genes=False):
     """Generate a pygenomeviz-style alignment SVG.
 
     Each query gets its own section with the reference track on top and the
@@ -2442,6 +2497,8 @@ def generate_alignment_svg(blast_hits, annotations, reference_length, reference_
                 ftype = feat['feature_type'].lower()
                 if ftype not in ('cds', 'gene', 'trna', 'rrna'):
                     continue
+                if show_res_genes and not _is_resistance_gene(feat):
+                    continue
                 ax1 = LEFT + (feat['start'] - 1) / reference_length * CONTENT_W
                 ax2 = LEFT + feat['end']           / reference_length * CONTENT_W
                 aw  = ax2 - ax1
@@ -2549,6 +2606,8 @@ def generate_alignment_svg(blast_hits, annotations, reference_length, reference_
         for feat in annotations:
             ft = feat['feature_type'].lower()
             if ft in ('cds', 'gene', 'trna', 'rrna') and ft not in seen:
+                if show_res_genes and not _is_resistance_gene(feat):
+                    continue
                 ann_types.append(ft)
                 seen.add(ft)
         for ft in ann_types:
@@ -2694,7 +2753,7 @@ def run_comparison(reference_fasta_text, query_alignment_texts, query_file_names
                    annotation_text=None,
                    min_identity=70.0, min_coverage=0.0, min_length=100,
                    show_gene_names=False, show_insertions=True,
-                   progress_callback=None):
+                   progress_callback=None, show_res_genes=False):
     """
     Run genome comparison pipeline using pre-computed lastz alignments.
 
@@ -2773,6 +2832,7 @@ def run_comparison(reference_fasta_text, query_alignment_texts, query_file_names
         insertion_sites=all_insertions,
         show_insertions=show_insertions,
         min_identity=min_identity,
+        show_res_genes=show_res_genes,
     )
     linear_svg = generate_linear_svg(
         blast_hits=all_hits,
@@ -2784,6 +2844,7 @@ def run_comparison(reference_fasta_text, query_alignment_texts, query_file_names
         min_identity=min_identity,
         insertion_sites=all_insertions,
         show_insertions=show_insertions,
+        show_res_genes=show_res_genes,
     )
     alignment_svg = generate_alignment_svg(
         blast_hits=all_hits,
@@ -2795,6 +2856,7 @@ def run_comparison(reference_fasta_text, query_alignment_texts, query_file_names
         min_identity=min_identity,
         insertion_sites=all_insertions,
         show_insertions=show_insertions,
+        show_res_genes=show_res_genes,
     )
     _prog(total_steps, total_steps, 'Done!')
     return circular_svg, linear_svg, alignment_svg
