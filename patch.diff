@@ -1,0 +1,105 @@
+1d0
+< <script type="text/python" id="pymodule">
+10a10
+> import re
+305a306,340
+> def _is_resistance_gene(feat):
+>     """Check if an annotation feature is a resistance gene based on its product or attributes."""
+>     if feat.get('feature_type', '').lower() not in ('cds', 'gene'):
+>         return False
+>     attrs = feat.get('attributes', {})
+>     product = attrs.get('product', '').lower()
+>     name = attrs.get('Name', '').lower()
+>     note = attrs.get('note', '').lower()
+>
+>     # Common resistance keywords or patterns
+>     # These often include 'bla', 'ndm', 'kpc', 'oxa', 'tet', 'sul', 'mcr', etc.
+>     res_keywords = [
+>         'resistance', 'beta-lactamase', 'carbapenemase', 'efflux',
+>         'antibiotic', 'antimicrobial', 'aminoglycoside', 'tetracycline',
+>         'macrolide', 'chloramphenicol', 'sulfonamide', 'trimethoprim',
+>         'quinolone'
+>     ]
+>
+>     # Also check if the gene name looks like a common AMR gene (e.g. blaNDM, tetA, sul1)
+>     short_gene_pattern = re.compile(r'^(bla|tet|sul|aad|aph|aac|erm|mef|msr|lnu|vat|vga|dfr|qnr|mcr|cat|flo|cml)[a-z0-9-]*$', re.IGNORECASE)
+>
+>     text_to_search = f"{product} {name} {note}"
+>
+>     if any(kw in text_to_search for kw in res_keywords):
+>         return True
+>
+>     if name and short_gene_pattern.match(name):
+>         return True
+>
+>     # Check ontology terms for AMR-related GO terms if present
+>     if 'GO:0046677' in attrs.get('Ontology_term', ''): # response to antibiotic
+>         return True
+>
+>     return False
+>
+336c371,372
+<                  insertion_sites=None, show_insertions=True, min_identity=70.0):
+---
+>                  insertion_sites=None, show_insertions=True, min_identity=70.0,
+>                  show_res_genes=False):
+405a442,446
+>             ftype = feat['feature_type'].lower()
+>             if ftype not in ('cds', 'gene', 'trna', 'rrna'):
+>                 continue
+>             if show_res_genes and not _is_resistance_gene(feat):
+>                 continue
+556a598,606
+>
+>         seen_types = set()
+>         for feat in annotations:
+>             ft = feat['feature_type'].lower()
+>             if ft in ('cds', 'gene', 'trna', 'rrna') and ft not in seen_types:
+>                 if show_res_genes and not _is_resistance_gene(feat):
+>                     continue
+>                 seen_types.add(ft)
+>
+558,561c608,612
+<             c = _annotation_color(ftype)
+<             out.append(f'<rect x="{lx}" y="{ly}" width="{bs}" height="{bs}" fill="{c}" rx="2"/>\n')
+<             out.append(f'<text x="{lx+bs+7}" y="{ly+bs-2}" font-size="10" fill="#333">{label}</text>\n')
+<             ly += ih
+---
+>             if ftype in seen_types:
+>                 c = _annotation_color(ftype)
+>                 out.append(f'<rect x="{lx}" y="{ly}" width="{bs}" height="{bs}" fill="{c}" rx="2"/>\n')
+>                 out.append(f'<text x="{lx+bs+7}" y="{ly+bs-2}" font-size="10" fill="#333">{label}</text>\n')
+>                 ly += ih
+573c624
+<                         insertion_sites=None, show_insertions=True):
+---
+>                         insertion_sites=None, show_insertions=True, show_res_genes=False):
+733a785,786
+>             if show_res_genes and not _is_resistance_gene(feat):
+>                 continue
+833a887,888
+>                 if show_res_genes and not _is_resistance_gene(feat):
+>                     continue
+915c970
+<                            insertion_sites=None, show_insertions=True):
+---
+>                            insertion_sites=None, show_insertions=True, show_res_genes=False):
+1101a1157,1158
+>                 if show_res_genes and not _is_resistance_gene(feat):
+>                     continue
+1208a1266,1267
+>                 if show_res_genes and not _is_resistance_gene(feat):
+>                     continue
+1354c1413
+<                    progress_callback=None):
+---
+>                    progress_callback=None, show_res_genes=False):
+1432a1492
+>         show_res_genes=show_res_genes,
+1443a1504
+>         show_res_genes=show_res_genes,
+1454a1516
+>         show_res_genes=show_res_genes,
+1458,1459d1519
+<
+< </script>
