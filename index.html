@@ -1260,6 +1260,7 @@ document.getElementById('btn-load-ndm').addEventListener('click', async () => {
 
   const BASE = './examples/ndm-plasmids/';
   const REF  = 'NDM152_IncHI2_plasmid.fna';
+  const ANNOT = 'NDM152_IncHI2_plasmid.gff';
   const QUERIES = [
     'NDM101_IncHI2_plasmid.fna',
     'NDM121_IncHI2_plasmid.fna',
@@ -1270,14 +1271,14 @@ document.getElementById('btn-load-ndm').addEventListener('click', async () => {
 
   try {
     const responses = await Promise.all(
-      [REF, ...QUERIES].map(f => fetch(BASE + f).then(r => {
+      [REF, ANNOT, ...QUERIES].map(f => fetch(BASE + f).then(r => {
         if (!r.ok) throw new Error(`Failed to fetch ${f}: ${r.status}`);
         return r.text();
       }))
     );
     refFile    = { name: REF, content: responses[0] };
-    queryFiles = QUERIES.map((f, i) => ({ name: f, content: responses[i + 1] }));
-    annotFile  = null;
+    annotFile  = { name: ANNOT, content: responses[1] };
+    queryFiles = QUERIES.map((f, i) => ({ name: f, content: responses[i + 2] }));
     renderRefChips();
     renderQueryChips();
     renderAnnotChips();
