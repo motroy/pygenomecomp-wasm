@@ -1475,19 +1475,22 @@ def _hit_color(qi, identity, min_identity=70.0):
     strength = 0.4 + 0.6 * frac
     return _rgb_hex(int(255-(255-r)*strength), int(255-(255-g)*strength), int(255-(255-b)*strength))
 
-def _linear_hit_color(identity, inverted, min_identity=70.0):
-    """Color linear/alignment ribbon by strand (fwd=orange, inv=purple) and identity.
+def _linear_hit_color(qi, identity, inverted, min_identity=70.0):
+    """Color linear/alignment ribbon using the query's ring colour, shaded by identity.
 
-    Lower identity → paler shade; higher identity → more saturated shade.
+    Mirrors the per-genome colour scheme used in the circular view so colours are
+    consistent across all three view modes.  Forward alignments use the full ring
+    colour; inverted alignments use a lighter shade of the same colour so strand
+    direction is still visible.
     """
-    if inverted:
-        r, g, b = 184, 164, 201   # #b8a4c9  LINEAR_INV_COLOR
-    else:
-        r, g, b = 244, 164, 96    # #f4a460  LINEAR_FWD_COLOR
+    r, g, b = _ring_color(qi)
     identity = max(min_identity, min(100.0, identity))
     span = 100.0 - min_identity
     frac = (identity - min_identity) / span if span > 0 else 1.0
-    strength = 0.3 + 0.7 * frac   # 0.3 (pale) → 1.0 (full colour)
+    if inverted:
+        strength = 0.15 + 0.35 * frac   # 0.15 (very pale) → 0.50 (medium)
+    else:
+        strength = 0.30 + 0.70 * frac   # 0.30 (pale) → 1.00 (full colour)
     return _rgb_hex(
         int(255 - (255 - r) * strength),
         int(255 - (255 - g) * strength),
@@ -1532,7 +1535,7 @@ def _full_ring(cx, cy, ri, ro, fill, opacity=1.0):
 
 def generate_svg(blast_hits, annotations, reference_length, query_names,
                  reference_display_name, show_gene_names=False,
-                 insertion_sites=None, min_identity=70.0):
+                 insertion_sites=None, show_insertions=True, min_identity=70.0):
     """Generate a BRIG-style circular SVG and return it as a string."""
     if reference_length == 0:
         raise ValueError("Reference length cannot be zero.")
@@ -1658,31 +1661,32 @@ def generate_svg(blast_hits, annotations, reference_length, query_names,
                         _hit_color(qi, hit['pident'], min_identity)))
 
     # --- Insertion site markers ---
-    INS_COLOR = '#1a1a1a'
+    INS_COLOR  = '#1a1a1a'
     INS_MIN_HW = 0.012
-    for site in insertion_sites:
-        qi  = site['query_index']
-        ir  = BLAST_HIT_BASE_RADIUS + qi * (blast_ring_thickness + blast_ring_spacing)
-        or_ = ir + blast_ring_thickness
-        mid = (site['ref_position'] / reference_length) * 2 * math.pi - math.pi / 2
-        hw  = max(INS_MIN_HW, (1.0 / reference_length) * 2 * math.pi)
-        out.append(_arc(CENTER_X, CENTER_Y, ir, or_, mid-hw, mid+hw, INS_COLOR, 0.85))
-        x1 = CENTER_X + tick_inner * math.cos(mid)
-        y1 = CENTER_Y + tick_inner * math.sin(mid)
-        x2 = CENTER_X + tick_outer * math.cos(mid)
-        y2 = CENTER_Y + tick_outer * math.sin(mid)
-        out.append(f'<line x1="{x1:.1f}" y1="{y1:.1f}" x2="{x2:.1f}" y2="{y2:.1f}" '
-                   f'stroke="{INS_COLOR}" stroke-width="1.5"/>\n')
-        ins = site['insertion_size']
-        slabel = (f'+{ins/1e6:.1f} Mb' if ins >= 1_000_000 else
-                  f'+{ins/1e3:.1f} kb' if ins >= 1_000 else f'+{ins} bp')
-        xlbl = CENTER_X + label_r * math.cos(mid)
-        ylbl = CENTER_Y + label_r * math.sin(mid)
-        deg  = math.degrees(mid)
-        rot  = deg + 90 if -90 <= deg <= 90 else deg - 90
-        out.append(f'<text x="{xlbl:.1f}" y="{ylbl:.1f}" font-size="9" text-anchor="middle" '
-                   f'fill="{INS_COLOR}" transform="rotate({rot:.1f},{xlbl:.2f},{ylbl:.2f})">'
-                   f'{_esc(slabel)}</text>\n')
+    if show_insertions:
+        for site in insertion_sites:
+            qi  = site['query_index']
+            ir  = BLAST_HIT_BASE_RADIUS + qi * (blast_ring_thickness + blast_ring_spacing)
+            or_ = ir + blast_ring_thickness
+            mid = (site['ref_position'] / reference_length) * 2 * math.pi - math.pi / 2
+            hw  = max(INS_MIN_HW, (1.0 / reference_length) * 2 * math.pi)
+            out.append(_arc(CENTER_X, CENTER_Y, ir, or_, mid-hw, mid+hw, INS_COLOR, 0.85))
+            x1 = CENTER_X + tick_inner * math.cos(mid)
+            y1 = CENTER_Y + tick_inner * math.sin(mid)
+            x2 = CENTER_X + tick_outer * math.cos(mid)
+            y2 = CENTER_Y + tick_outer * math.sin(mid)
+            out.append(f'<line x1="{x1:.1f}" y1="{y1:.1f}" x2="{x2:.1f}" y2="{y2:.1f}" '
+                       f'stroke="{INS_COLOR}" stroke-width="1.5"/>\n')
+            ins = site['insertion_size']
+            slabel = (f'+{ins/1e6:.1f} Mb' if ins >= 1_000_000 else
+                      f'+{ins/1e3:.1f} kb' if ins >= 1_000 else f'+{ins} bp')
+            xlbl = CENTER_X + label_r * math.cos(mid)
+            ylbl = CENTER_Y + label_r * math.sin(mid)
+            deg  = math.degrees(mid)
+            rot  = deg + 90 if -90 <= deg <= 90 else deg - 90
+            out.append(f'<text x="{xlbl:.1f}" y="{ylbl:.1f}" font-size="9" text-anchor="middle" '
+                       f'fill="{INS_COLOR}" transform="rotate({rot:.1f},{xlbl:.2f},{ylbl:.2f})">'
+                       f'{_esc(slabel)}</text>\n')
 
     # --- Outermost ring border ---
     if n_queries > 0:
@@ -1742,7 +1746,7 @@ def generate_svg(blast_hits, annotations, reference_length, query_names,
         out.append(f'<text x="{lx+gw-25}" y="{ly}" font-size="9" fill="#666">100%</text>\n')
         ly += ih
 
-    if insertion_sites:
+    if show_insertions and insertion_sites:
         out.append(f'<text x="{lx}" y="{ly}" font-weight="bold" font-size="11" fill="#555">Insertions</text>\n')
         ly += ih - 2
         out.append(f'<rect x="{lx}" y="{ly}" width="{bs}" height="{bs}" fill="#1a1a1a" rx="2"/>\n')
@@ -1767,13 +1771,16 @@ def generate_svg(blast_hits, annotations, reference_length, query_names,
 # ============================================================
 
 def generate_linear_svg(blast_hits, annotations, reference_length, reference_name,
-                        query_names, show_gene_names=False, min_identity=70.0):
+                        query_names, show_gene_names=False, min_identity=70.0,
+                        insertion_sites=None, show_insertions=True):
     """Generate a linear (Mauve-style) alignment view SVG and return it as a string.
 
     Sequences are stacked as horizontal tracks. Alignment ribbons connect aligned
-    regions between the reference (top) and each query (below), coloured by strand:
-    orange = forward, purple = inverted.
+    regions between the reference (top) and each query (below), coloured by each
+    query's ring colour (matching the circular view): forward = full colour,
+    inverted = lighter shade of the same colour.
     """
+    insertion_sites = insertion_sites or []
     if reference_length == 0:
         raise ValueError("Reference length cannot be zero.")
 
@@ -1830,20 +1837,21 @@ def generate_linear_svg(blast_hits, annotations, reference_length, reference_nam
     )
     out.append('<style>text { font-family: Arial, Helvetica, sans-serif; }</style>\n')
 
-    # ── Gradient defs for identity legend ────────────────────────────
+    # ── Gradient defs for identity legend (one pair per query) ───────
     _grad_fracs = (0, 0.33, 0.66, 1)
     _span = 100.0 - min_identity
-    fwd_stops = ''.join(
-        f'  <stop offset="{f}" stop-color="{_linear_hit_color(min_identity + f * _span, False, min_identity)}"/>\n'
-        for f in _grad_fracs
-    )
-    inv_stops = ''.join(
-        f'  <stop offset="{f}" stop-color="{_linear_hit_color(min_identity + f * _span, True, min_identity)}"/>\n'
-        for f in _grad_fracs
-    )
     out.append('<defs>\n')
-    out.append(f'<linearGradient id="lin_fwd_grad" x1="0" y1="0" x2="1" y2="0">\n{fwd_stops}</linearGradient>\n')
-    out.append(f'<linearGradient id="lin_inv_grad" x1="0" y1="0" x2="1" y2="0">\n{inv_stops}</linearGradient>\n')
+    for _qi in range(n_queries):
+        _fwd = ''.join(
+            f'  <stop offset="{f}" stop-color="{_linear_hit_color(_qi, min_identity + f * _span, False, min_identity)}"/>\n'
+            for f in _grad_fracs
+        )
+        _inv = ''.join(
+            f'  <stop offset="{f}" stop-color="{_linear_hit_color(_qi, min_identity + f * _span, True, min_identity)}"/>\n'
+            for f in _grad_fracs
+        )
+        out.append(f'<linearGradient id="lin_fwd_grad_{_qi}" x1="0" y1="0" x2="1" y2="0">\n{_fwd}</linearGradient>\n')
+        out.append(f'<linearGradient id="lin_inv_grad_{_qi}" x1="0" y1="0" x2="1" y2="0">\n{_inv}</linearGradient>\n')
     out.append('</defs>\n')
 
     out.append(f'<rect width="{W}" height="{H}" fill="white"/>\n')
@@ -1863,7 +1871,7 @@ def generate_linear_svg(blast_hits, annotations, reference_length, reference_nam
 
         # Inverted when qstart > qend (coords were swapped by the parser for '-' strand)
         inverted = hit['qstart'] > hit['qend']
-        fill     = _linear_hit_color(hit['pident'], inverted, min_identity)
+        fill     = _linear_hit_color(qi, hit['pident'], inverted, min_identity)
 
         # Skip ribbons too narrow to see
         if abs(rx2 - rx1) < 0.5 and abs(qx2 - qx1) < 0.5:
@@ -1895,6 +1903,29 @@ def generate_linear_svg(blast_hits, annotations, reference_length, reference_nam
             f'width="{qw:.1f}" height="{TRACK_H:.1f}" '
             f'fill="{LINEAR_BACKBONE_COLOR}" rx="3"/>\n'
         )
+
+    # ── Insertion site markers on reference track ─────────────────────
+    if show_insertions and insertion_sites:
+        INS_TICK_H = 8
+        for site in insertion_sites:
+            _qi   = site['query_index']
+            ix    = ref_x(site['ref_position'])
+            _r, _g, _b = _ring_color(_qi)
+            ins_c = _rgb_hex(_r, _g, _b)
+            tick_top = ref_cy - TRACK_H / 2 - INS_TICK_H
+            out.append(
+                f'<line x1="{ix:.1f}" y1="{ref_cy - TRACK_H/2:.1f}" '
+                f'x2="{ix:.1f}" y2="{tick_top:.1f}" '
+                f'stroke="{ins_c}" stroke-width="1.5" opacity="0.85"/>\n'
+            )
+            ins = site['insertion_size']
+            lbl = (f'+{ins/1e6:.1f}M' if ins >= 1_000_000 else
+                   f'+{ins/1e3:.0f}k'  if ins >= 1_000     else f'+{ins}')
+            out.append(
+                f'<text x="{ix:.1f}" y="{tick_top - 2:.1f}" '
+                f'font-size="6" text-anchor="middle" fill="{ins_c}" opacity="0.85">'
+                f'{_esc(lbl)}</text>\n'
+            )
 
     # ── Gene-annotation arrows on the reference track ─────────────────
     if annotations:
@@ -1992,8 +2023,8 @@ def generate_linear_svg(blast_hits, annotations, reference_length, reference_nam
     ly  = TOP
     bs  = 12
     ih  = 20
-    gw  = 110   # gradient bar width
-    gh  = 10    # gradient bar height
+    gw  = 95    # gradient bar width
+    gh  = 9     # gradient bar height
 
     solid_items = [('Sequence Backbone', LINEAR_BACKBONE_COLOR)]
     if annotations:
@@ -2008,13 +2039,17 @@ def generate_linear_svg(blast_hits, annotations, reference_length, reference_nam
             label = {'cds': 'CDS', 'gene': 'Gene', 'trna': 'tRNA', 'rrna': 'rRNA'}[ft]
             solid_items.append((label, _annotation_color(ft)))
 
-    # Height: solid items + "% Identity" header + two gradient bars + label row + padding
+    # Per-query section height: name row + fwd bar + inv bar + spacing
+    _pqh = (ih - 4) + (gh + 3) + (gh + 3) + 6
+    # Height: solid items + "% Identity" header + per-query sections + min%/100% row + padding
     lbg_h = (len(solid_items) * ih
-              + ih                    # "% Identity" header
-              + (gh + 4) * 2          # two gradient bars
-              + ih                    # min%/100% label row
-              + 20)                   # top/bottom padding
-    lbg_w = gw + 30
+              + ih                      # "% Identity" header
+              + n_queries * _pqh        # per-query gradient rows
+              + ih                      # min%/100% label row
+              + 20)                     # top/bottom padding
+    if show_insertions and insertion_sites:
+        lbg_h += ih
+    lbg_w = gw + 38
 
     out.append(
         f'<rect x="{lx - 8:.1f}" y="{ly - 8:.1f}" width="{lbg_w:.1f}" height="{lbg_h:.1f}" '
@@ -2028,26 +2063,46 @@ def generate_linear_svg(blast_hits, annotations, reference_length, reference_nam
         )
         ly += ih
 
-    # Identity gradient section
+    # Per-query identity gradient section
     out.append(
         f'<text x="{lx:.1f}" y="{ly + 10:.1f}" '
         f'font-size="10" font-weight="bold" fill="#555">% Identity</text>\n'
     )
     ly += ih
-    # Forward gradient bar
-    out.append(f'<rect x="{lx:.1f}" y="{ly:.1f}" width="{gw}" height="{gh}" '
-               f'fill="url(#lin_fwd_grad)" rx="2"/>\n')
-    out.append(f'<text x="{lx + gw + 4:.1f}" y="{ly + gh - 1:.1f}" '
-               f'font-size="9" fill="#555">Fwd</text>\n')
-    ly += gh + 4
-    # Inverted gradient bar
-    out.append(f'<rect x="{lx:.1f}" y="{ly:.1f}" width="{gw}" height="{gh}" '
-               f'fill="url(#lin_inv_grad)" rx="2"/>\n')
-    out.append(f'<text x="{lx + gw + 4:.1f}" y="{ly + gh - 1:.1f}" '
-               f'font-size="9" fill="#555">Inv</text>\n')
-    ly += gh + 4
+    for _qi, _qname in enumerate(query_names):
+        _r, _g, _b = _ring_color(_qi)
+        _ring_hex = _rgb_hex(_r, _g, _b)
+        _disp = (_qname[:15] + '\u2026') if len(_qname) > 16 else _qname
+        # Query colour chip + name
+        out.append(f'<rect x="{lx:.1f}" y="{ly:.1f}" width="{bs}" height="{bs}" fill="{_ring_hex}" rx="2"/>\n')
+        out.append(
+            f'<text x="{lx + bs + 5:.1f}" y="{ly + bs - 1:.1f}" '
+            f'font-size="9" fill="#333">{_esc(_disp)}</text>\n'
+        )
+        ly += ih - 4
+        # Forward gradient bar
+        out.append(f'<rect x="{lx:.1f}" y="{ly:.1f}" width="{gw}" height="{gh}" '
+                   f'fill="url(#lin_fwd_grad_{_qi})" rx="2"/>\n')
+        out.append(f'<text x="{lx + gw + 3:.1f}" y="{ly + gh:.1f}" '
+                   f'font-size="8" fill="#555">Fwd</text>\n')
+        ly += gh + 3
+        # Inverted gradient bar (lighter shade)
+        out.append(f'<rect x="{lx:.1f}" y="{ly:.1f}" width="{gw}" height="{gh}" '
+                   f'fill="url(#lin_inv_grad_{_qi})" rx="2"/>\n')
+        out.append(f'<text x="{lx + gw + 3:.1f}" y="{ly + gh:.1f}" '
+                   f'font-size="8" fill="#555">Inv</text>\n')
+        ly += gh + 9
     out.append(f'<text x="{lx:.1f}" y="{ly + 10:.1f}" font-size="9" fill="#666">{min_identity:.0f}%</text>\n')
     out.append(f'<text x="{lx + gw - 18:.1f}" y="{ly + 10:.1f}" font-size="9" fill="#666">100%</text>\n')
+    ly += ih
+
+    # Insertions legend entry
+    if show_insertions and insertion_sites:
+        out.append(f'<rect x="{lx:.1f}" y="{ly:.1f}" width="{bs}" height="{bs}" fill="#555" rx="2"/>\n')
+        out.append(
+            f'<text x="{lx + bs + 5:.1f}" y="{ly + bs - 1:.1f}" '
+            f'font-size="10" fill="#333">Insertion site</text>\n'
+        )
 
     out.append('</svg>')
     return ''.join(out)
@@ -2058,13 +2113,16 @@ def generate_linear_svg(blast_hits, annotations, reference_length, reference_nam
 # ============================================================
 
 def generate_alignment_svg(blast_hits, annotations, reference_length, reference_name,
-                           query_names, show_gene_names=False, min_identity=70.0):
+                           query_names, show_gene_names=False, min_identity=70.0,
+                           insertion_sites=None, show_insertions=True):
     """Generate a pygenomeviz-style alignment SVG.
 
     Each query gets its own section with the reference track on top and the
     query track below, connected by ribbons. Ribbons never cross between
     different query sections, making the view much easier to interpret.
+    Ribbon colours match the circular view's per-genome ring colours.
     """
+    insertion_sites = insertion_sites or []
     if reference_length == 0:
         raise ValueError("Reference length cannot be zero.")
 
@@ -2129,20 +2187,21 @@ def generate_alignment_svg(blast_hits, annotations, reference_length, reference_
     )
     out.append('<style>text { font-family: Arial, Helvetica, sans-serif; }</style>\n')
 
-    # ── Gradient defs for identity legend ────────────────────────────
+    # ── Gradient defs for identity legend (one pair per query) ───────
     _grad_fracs = (0, 0.33, 0.66, 1)
     _span = 100.0 - min_identity
-    fwd_stops = ''.join(
-        f'  <stop offset="{f}" stop-color="{_linear_hit_color(min_identity + f * _span, False, min_identity)}"/>\n'
-        for f in _grad_fracs
-    )
-    inv_stops = ''.join(
-        f'  <stop offset="{f}" stop-color="{_linear_hit_color(min_identity + f * _span, True, min_identity)}"/>\n'
-        for f in _grad_fracs
-    )
     out.append('<defs>\n')
-    out.append(f'<linearGradient id="aln_fwd_grad" x1="0" y1="0" x2="1" y2="0">\n{fwd_stops}</linearGradient>\n')
-    out.append(f'<linearGradient id="aln_inv_grad" x1="0" y1="0" x2="1" y2="0">\n{inv_stops}</linearGradient>\n')
+    for _qi in range(n_queries):
+        _fwd = ''.join(
+            f'  <stop offset="{f}" stop-color="{_linear_hit_color(_qi, min_identity + f * _span, False, min_identity)}"/>\n'
+            for f in _grad_fracs
+        )
+        _inv = ''.join(
+            f'  <stop offset="{f}" stop-color="{_linear_hit_color(_qi, min_identity + f * _span, True, min_identity)}"/>\n'
+            for f in _grad_fracs
+        )
+        out.append(f'<linearGradient id="aln_fwd_grad_{_qi}" x1="0" y1="0" x2="1" y2="0">\n{_fwd}</linearGradient>\n')
+        out.append(f'<linearGradient id="aln_inv_grad_{_qi}" x1="0" y1="0" x2="1" y2="0">\n{_inv}</linearGradient>\n')
     out.append('</defs>\n')
 
     out.append(f'<rect width="{W}" height="{H}" fill="white"/>\n')
@@ -2189,7 +2248,7 @@ def generate_alignment_svg(blast_hits, annotations, reference_length, reference_
             qx2 = qx(qe, qi)
 
             inverted = hit['qstart'] > hit['qend']
-            fill     = _linear_hit_color(hit['pident'], inverted, min_identity)
+            fill     = _linear_hit_color(qi, hit['pident'], inverted, min_identity)
 
             if abs(rx2 - rx1) < 0.5 and abs(qx2 - qx1) < 0.5:
                 continue
@@ -2211,6 +2270,30 @@ def generate_alignment_svg(blast_hits, annotations, reference_length, reference_
             f'width="{ref_w:.1f}" height="{TRACK_H:.1f}" '
             f'fill="{LINEAR_BACKBONE_COLOR}" rx="3"/>\n'
         )
+
+        # ── Insertion site markers on this section's reference track ─────
+        if show_insertions and insertion_sites:
+            INS_TICK_H = 8
+            for site in insertion_sites:
+                if site['query_index'] != qi:
+                    continue
+                ix = ref_x(site['ref_position'])
+                _r, _g, _b = _ring_color(qi)
+                ins_c = _rgb_hex(_r, _g, _b)
+                tick_top = ref_cy - TRACK_H / 2 - INS_TICK_H
+                out.append(
+                    f'<line x1="{ix:.1f}" y1="{ref_cy - TRACK_H/2:.1f}" '
+                    f'x2="{ix:.1f}" y2="{tick_top:.1f}" '
+                    f'stroke="{ins_c}" stroke-width="1.5" opacity="0.85"/>\n'
+                )
+                ins = site['insertion_size']
+                lbl = (f'+{ins/1e6:.1f}M' if ins >= 1_000_000 else
+                       f'+{ins/1e3:.0f}k'  if ins >= 1_000     else f'+{ins}')
+                out.append(
+                    f'<text x="{ix:.1f}" y="{tick_top - 2:.1f}" '
+                    f'font-size="6" text-anchor="middle" fill="{ins_c}" opacity="0.85">'
+                    f'{_esc(lbl)}</text>\n'
+                )
 
         # ── Gene annotation arrows on reference ───────────────────────
         if annotations:
@@ -2315,8 +2398,8 @@ def generate_alignment_svg(blast_hits, annotations, reference_length, reference_
     ly  = TOP_HEADER + 10
     bs  = 12
     ih  = 20
-    gw  = 110   # gradient bar width
-    gh  = 10    # gradient bar height
+    gw  = 95    # gradient bar width
+    gh  = 9     # gradient bar height
 
     solid_items = [('Sequence Backbone', LINEAR_BACKBONE_COLOR)]
     if annotations:
@@ -2331,13 +2414,17 @@ def generate_alignment_svg(blast_hits, annotations, reference_length, reference_
             label = {'cds': 'CDS', 'gene': 'Gene', 'trna': 'tRNA', 'rrna': 'rRNA'}[ft]
             solid_items.append((label, _annotation_color(ft)))
 
-    # Height: solid items + "% Identity" header + two gradient bars + label row + padding
+    # Per-query section height: name row + fwd bar + inv bar + spacing
+    _pqh = (ih - 4) + (gh + 3) + (gh + 3) + 6
+    # Height: solid items + "% Identity" header + per-query sections + min%/100% row + padding
     lbg_h = (len(solid_items) * ih
-              + ih                    # "% Identity" header
-              + (gh + 4) * 2          # two gradient bars
-              + ih                    # min%/100% label row
-              + 20)                   # top/bottom padding
-    lbg_w = gw + 30
+              + ih                      # "% Identity" header
+              + n_queries * _pqh        # per-query gradient rows
+              + ih                      # min%/100% label row
+              + 20)                     # top/bottom padding
+    if show_insertions and insertion_sites:
+        lbg_h += ih
+    lbg_w = gw + 38
 
     out.append(
         f'<rect x="{lx - 8:.1f}" y="{ly - 8:.1f}" width="{lbg_w:.1f}" height="{lbg_h:.1f}" '
@@ -2351,26 +2438,46 @@ def generate_alignment_svg(blast_hits, annotations, reference_length, reference_
         )
         ly += ih
 
-    # Identity gradient section
+    # Per-query identity gradient section
     out.append(
         f'<text x="{lx:.1f}" y="{ly + 10:.1f}" '
         f'font-size="10" font-weight="bold" fill="#555">% Identity</text>\n'
     )
     ly += ih
-    # Forward gradient bar
-    out.append(f'<rect x="{lx:.1f}" y="{ly:.1f}" width="{gw}" height="{gh}" '
-               f'fill="url(#aln_fwd_grad)" rx="2"/>\n')
-    out.append(f'<text x="{lx + gw + 4:.1f}" y="{ly + gh - 1:.1f}" '
-               f'font-size="9" fill="#555">Fwd</text>\n')
-    ly += gh + 4
-    # Inverted gradient bar
-    out.append(f'<rect x="{lx:.1f}" y="{ly:.1f}" width="{gw}" height="{gh}" '
-               f'fill="url(#aln_inv_grad)" rx="2"/>\n')
-    out.append(f'<text x="{lx + gw + 4:.1f}" y="{ly + gh - 1:.1f}" '
-               f'font-size="9" fill="#555">Inv</text>\n')
-    ly += gh + 4
+    for _qi, _qname in enumerate(query_names):
+        _r, _g, _b = _ring_color(_qi)
+        _ring_hex = _rgb_hex(_r, _g, _b)
+        _disp = (_qname[:15] + '\u2026') if len(_qname) > 16 else _qname
+        # Query colour chip + name
+        out.append(f'<rect x="{lx:.1f}" y="{ly:.1f}" width="{bs}" height="{bs}" fill="{_ring_hex}" rx="2"/>\n')
+        out.append(
+            f'<text x="{lx + bs + 5:.1f}" y="{ly + bs - 1:.1f}" '
+            f'font-size="9" fill="#333">{_esc(_disp)}</text>\n'
+        )
+        ly += ih - 4
+        # Forward gradient bar
+        out.append(f'<rect x="{lx:.1f}" y="{ly:.1f}" width="{gw}" height="{gh}" '
+                   f'fill="url(#aln_fwd_grad_{_qi})" rx="2"/>\n')
+        out.append(f'<text x="{lx + gw + 3:.1f}" y="{ly + gh:.1f}" '
+                   f'font-size="8" fill="#555">Fwd</text>\n')
+        ly += gh + 3
+        # Inverted gradient bar (lighter shade)
+        out.append(f'<rect x="{lx:.1f}" y="{ly:.1f}" width="{gw}" height="{gh}" '
+                   f'fill="url(#aln_inv_grad_{_qi})" rx="2"/>\n')
+        out.append(f'<text x="{lx + gw + 3:.1f}" y="{ly + gh:.1f}" '
+                   f'font-size="8" fill="#555">Inv</text>\n')
+        ly += gh + 9
     out.append(f'<text x="{lx:.1f}" y="{ly + 10:.1f}" font-size="9" fill="#666">{min_identity:.0f}%</text>\n')
     out.append(f'<text x="{lx + gw - 18:.1f}" y="{ly + 10:.1f}" font-size="9" fill="#666">100%</text>\n')
+    ly += ih
+
+    # Insertions legend entry
+    if show_insertions and insertion_sites:
+        out.append(f'<rect x="{lx:.1f}" y="{ly:.1f}" width="{bs}" height="{bs}" fill="#555" rx="2"/>\n')
+        out.append(
+            f'<text x="{lx + bs + 5:.1f}" y="{ly + bs - 1:.1f}" '
+            f'font-size="10" fill="#333">Insertion site</text>\n'
+        )
 
     out.append('</svg>')
     return ''.join(out)
@@ -2445,7 +2552,7 @@ def cluster_queries_by_similarity(blast_hits, query_names, ref_len):
 def run_comparison(reference_fasta_text, query_alignment_texts, query_file_names,
                    annotation_text=None,
                    min_identity=70.0, min_coverage=0.0, min_length=100,
-                   show_gene_names=False,
+                   show_gene_names=False, show_insertions=True,
                    progress_callback=None):
     """
     Run genome comparison pipeline using pre-computed lastz alignments.
@@ -2523,6 +2630,7 @@ def run_comparison(reference_fasta_text, query_alignment_texts, query_file_names
         reference_display_name=ref_name,
         show_gene_names=show_gene_names,
         insertion_sites=all_insertions,
+        show_insertions=show_insertions,
         min_identity=min_identity,
     )
     linear_svg = generate_linear_svg(
@@ -2533,6 +2641,8 @@ def run_comparison(reference_fasta_text, query_alignment_texts, query_file_names
         query_names=ordered_names,
         show_gene_names=show_gene_names,
         min_identity=min_identity,
+        insertion_sites=all_insertions,
+        show_insertions=show_insertions,
     )
     alignment_svg = generate_alignment_svg(
         blast_hits=all_hits,
@@ -2542,6 +2652,8 @@ def run_comparison(reference_fasta_text, query_alignment_texts, query_file_names
         query_names=ordered_names,
         show_gene_names=show_gene_names,
         min_identity=min_identity,
+        insertion_sites=all_insertions,
+        show_insertions=show_insertions,
     )
     _prog(total_steps, total_steps, 'Done!')
     return circular_svg, linear_svg, alignment_svg
