@@ -310,6 +310,7 @@ def _is_resistance_gene(feat):
     attrs = feat.get('attributes', {})
     product = attrs.get('product', '').lower()
     name = attrs.get('Name', '').lower()
+    gene_attr = attrs.get('gene', '').lower()
     note = attrs.get('note', '').lower()
 
     # Common resistance keywords or patterns
@@ -318,18 +319,21 @@ def _is_resistance_gene(feat):
         'resistance', 'beta-lactamase', 'carbapenemase', 'efflux',
         'antibiotic', 'antimicrobial', 'aminoglycoside', 'tetracycline',
         'macrolide', 'chloramphenicol', 'sulfonamide', 'trimethoprim',
-        'quinolone'
+        'quinolone', 'streptomycin', 'spectinomycin', 'erythromycin'
     ]
 
     # Also check if the gene name looks like a common AMR gene (e.g. blaNDM, tetA, sul1)
-    short_gene_pattern = re.compile(r'^(bla|tet|sul|aad|aph|aac|erm|mef|msr|lnu|vat|vga|dfr|qnr|mcr|cat|flo|cml)[a-z0-9-]*$', re.IGNORECASE)
+    short_gene_pattern = re.compile(r'^(bla|tet|sul|aad|aph|aac|erm|mef|msr|lnu|vat|vga|dfr|qnr|mcr|cat|flo|cml|ere)[a-zA-Z0-9\-\(\)\']*$', re.IGNORECASE)
 
-    text_to_search = f"{product} {name} {note}"
+    text_to_search = f"{product} {name} {gene_attr} {note}"
 
     if any(kw in text_to_search for kw in res_keywords):
         return True
 
     if name and short_gene_pattern.match(name):
+        return True
+
+    if gene_attr and short_gene_pattern.match(gene_attr):
         return True
 
     # Check ontology terms for AMR-related GO terms if present
@@ -467,8 +471,18 @@ def generate_svg(blast_hits, annotations, reference_length, query_names,
                                f'stroke="#aaa" stroke-width="0.7"/>\n')
                     gx = CENTER_X + (outermost_r + 45) * math.cos(mid)
                     gy = CENTER_Y + (outermost_r + 45) * math.sin(mid)
-                    deg = math.degrees(mid)
+
+                    # Compute angle in standard (-180, 180) format
+                    deg = math.degrees(mid) % 360
+                    if deg > 180:
+                        deg -= 360
+
+                    # Calculate correct rotation so text is never upside down
+                    # The tangent line at angle `deg` is `deg + 90`.
+                    # If we rotate text by `deg + 90`, it is upright on the right side.
+                    # On the left side, we need to flip it by another 180 degrees (`deg - 90`)
                     rot = deg + 90 if -90 <= deg <= 90 else deg - 90
+
                     out.append(f'<text x="{gx:.1f}" y="{gy:.1f}" font-size="9" text-anchor="middle" '
                                f'fill="#222" transform="rotate({rot:.1f},{gx:.2f},{gy:.2f})">'
                                f'{_esc(gname)}</text>\n')
@@ -823,7 +837,8 @@ def generate_linear_svg(blast_hits, annotations, reference_length, reference_nam
                     gy = ref_cy - half_h - 3
                     out.append(
                         f'<text x="{gx:.1f}" y="{gy:.1f}" '
-                        f'font-size="8" text-anchor="middle" fill="#333">'
+                        f'font-size="8" text-anchor="start" fill="#333" '
+                        f'transform="rotate(-45 {gx:.1f} {gy:.1f})">'
                         f'{_esc(gname)}</text>\n'
                     )
 
@@ -1195,7 +1210,8 @@ def generate_alignment_svg(blast_hits, annotations, reference_length, reference_
                         gy = ref_cy - half_h - 3
                         out.append(
                             f'<text x="{gx:.1f}" y="{gy:.1f}" '
-                            f'font-size="8" text-anchor="middle" fill="#333">'
+                            f'font-size="8" text-anchor="start" fill="#333" '
+                            f'transform="rotate(-45 {gx:.1f} {gy:.1f})">'
                             f'{_esc(gname)}</text>\n'
                         )
 
