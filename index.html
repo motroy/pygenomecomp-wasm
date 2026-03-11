@@ -343,6 +343,18 @@
           </div>
           <span class="text-sm text-slate-600">Show gene names on plot</span>
         </label>
+
+        <!-- Show insertions -->
+        <label class="flex items-center gap-3 cursor-pointer select-none"
+               data-tip="Show insertion site markers where query has sequence absent from reference">
+          <div class="relative">
+            <input type="checkbox" id="show-insertions" class="sr-only peer" checked/>
+            <div class="w-10 h-5 bg-slate-200 rounded-full peer-checked:bg-blue-600 transition-colors"></div>
+            <div class="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow
+                        transition-transform peer-checked:translate-x-5"></div>
+          </div>
+          <span class="text-sm text-slate-600">Show insertion sites</span>
+        </label>
       </div>
     </div>
 
@@ -820,6 +832,7 @@ document.getElementById('min-coverage').addEventListener('input', function() {
 });
 document.getElementById('min-length').addEventListener('change', scheduleReplot);
 document.getElementById('show-gene-names').addEventListener('change', scheduleReplot);
+document.getElementById('show-insertions').addEventListener('change', scheduleReplot);
 
 let settingsOpen = true;
 document.getElementById('settings-toggle').addEventListener('click', () => {
@@ -876,6 +889,7 @@ def _run():
             min_coverage           = float(_min_coverage),
             min_length             = int(_min_length),
             show_gene_names        = bool(_show_gene_names),
+            show_insertions        = bool(_show_insertions),
             progress_callback      = _cb,
         )
     except Exception as e:
@@ -893,10 +907,11 @@ async function runPythonVisualization(preserveView = true) {
   isVisualizationRunning = true;
   document.getElementById('replot-indicator').classList.remove('hidden');
   try {
-    const minIdentity = parseFloat(document.getElementById('min-identity').value);
-    const minCoverage = parseFloat(document.getElementById('min-coverage').value);
-    const minLength   = parseInt(document.getElementById('min-length').value, 10);
-    const showGenes   = document.getElementById('show-gene-names').checked;
+    const minIdentity    = parseFloat(document.getElementById('min-identity').value);
+    const minCoverage    = parseFloat(document.getElementById('min-coverage').value);
+    const minLength      = parseInt(document.getElementById('min-length').value, 10);
+    const showGenes      = document.getElementById('show-gene-names').checked;
+    const showInsertions = document.getElementById('show-insertions').checked;
 
     pyodide.globals.set('_ref_text',              cachedRefContent);
     pyodide.globals.set('_query_alignment_texts', pyodide.toPy(cachedAlignmentTexts));
@@ -906,6 +921,7 @@ async function runPythonVisualization(preserveView = true) {
     pyodide.globals.set('_min_coverage',          minCoverage);
     pyodide.globals.set('_min_length',            minLength);
     pyodide.globals.set('_show_gene_names',       showGenes);
+    pyodide.globals.set('_show_insertions',       showInsertions);
     pyodide.globals.set('_js_progress',           () => {});
 
     await pyodide.runPythonAsync(PYTHON_RUNNER);
