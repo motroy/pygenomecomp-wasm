@@ -825,6 +825,7 @@ def generate_linear_svg(blast_hits, annotations, reference_length, reference_nam
             )
 
     # ── Gene-annotation arrows on the reference track ─────────────────
+    _lin_label_queue = []   # (orig_x, name, gene_top_y)
     if annotations:
         for feat in annotations:
             ftype = feat['feature_type'].lower()
@@ -867,14 +868,52 @@ def generate_linear_svg(blast_hits, annotations, reference_length, reference_nam
                     feat['attributes'].get('gene') or ''
                 )
                 if gname:
-                    gx = (ax1 + ax2) / 2
-                    gy = ref_cy - half_h - 3
-                    out.append(
-                        f'<text x="{gx:.1f}" y="{gy:.1f}" '
-                        f'font-size="8" text-anchor="start" fill="#333" '
-                        f'transform="rotate(-45 {gx:.1f} {gy:.1f})">'
-                        f'{_esc(gname)}</text>\n'
-                    )
+                    _lin_label_queue.append(((ax1 + ax2) / 2, gname, ref_cy - GENE_H / 2))
+
+    # ── Gene name labels for linear view (de-overlapped) ──────────────
+    if _lin_label_queue:
+        _LL_FONT  = 8
+        _LL_CHARW = _LL_FONT * 0.60
+        _LL_PAD   = 3
+        _LL_COS45 = math.cos(math.pi / 4)
+
+        _ll_entries  = sorted(_lin_label_queue, key=lambda t: t[0])
+        _ll_orig_x   = [e[0] for e in _ll_entries]
+        _ll_names    = [e[1] for e in _ll_entries]
+        _ll_gene_top = [e[2] for e in _ll_entries]
+        _ll_placed   = list(_ll_orig_x)
+
+        def _ll_footprint(name):
+            return len(name) * _LL_CHARW * _LL_COS45 + _LL_PAD
+
+        for _ in range(300):
+            moved = False
+            for i in range(len(_ll_placed) - 1):
+                gap_needed = _ll_footprint(_ll_names[i])
+                gap_actual = _ll_placed[i + 1] - _ll_placed[i]
+                if gap_actual < gap_needed:
+                    push = (gap_needed - gap_actual) / 2
+                    _ll_placed[i]     -= push
+                    _ll_placed[i + 1] += push
+                    moved = True
+            if not moved:
+                break
+
+        for _ll_i, (_ll_ox, _ll_name, _ll_gtop) in enumerate(_ll_entries):
+            _ll_px = _ll_placed[_ll_i]
+            _ll_gy = _ll_gtop - 3
+            if abs(_ll_px - _ll_ox) > 1:
+                out.append(
+                    f'<line x1="{_ll_ox:.1f}" y1="{_ll_gtop:.1f}" '
+                    f'x2="{_ll_px:.1f}" y2="{_ll_gy:.1f}" '
+                    f'stroke="#aaa" stroke-width="0.7"/>\n'
+                )
+            out.append(
+                f'<text x="{_ll_px:.1f}" y="{_ll_gy:.1f}" '
+                f'font-size="{_LL_FONT}" text-anchor="start" fill="#333" '
+                f'transform="rotate(-45 {_ll_px:.1f} {_ll_gy:.1f})">'
+                f'{_esc(_ll_name)}</text>\n'
+            )
 
     # ── Track labels ──────────────────────────────────────────────────
     out.append(
@@ -1198,6 +1237,7 @@ def generate_alignment_svg(blast_hits, annotations, reference_length, reference_
                 )
 
         # ── Gene annotation arrows on reference ───────────────────────
+        _aln_label_queue = []   # (orig_x, name, gene_top_y)
         if annotations:
             for feat in annotations:
                 ftype = feat['feature_type'].lower()
@@ -1240,14 +1280,52 @@ def generate_alignment_svg(blast_hits, annotations, reference_length, reference_
                         feat['attributes'].get('gene') or ''
                     )
                     if gname:
-                        gx = (ax1 + ax2) / 2
-                        gy = ref_cy - half_h - 3
-                        out.append(
-                            f'<text x="{gx:.1f}" y="{gy:.1f}" '
-                            f'font-size="8" text-anchor="start" fill="#333" '
-                            f'transform="rotate(-45 {gx:.1f} {gy:.1f})">'
-                            f'{_esc(gname)}</text>\n'
-                        )
+                        _aln_label_queue.append(((ax1 + ax2) / 2, gname, ref_cy - GENE_H / 2))
+
+        # ── Gene name labels for alignment view (de-overlapped) ────────
+        if _aln_label_queue:
+            _AL_FONT  = 8
+            _AL_CHARW = _AL_FONT * 0.60
+            _AL_PAD   = 3
+            _AL_COS45 = math.cos(math.pi / 4)
+
+            _al_entries  = sorted(_aln_label_queue, key=lambda t: t[0])
+            _al_orig_x   = [e[0] for e in _al_entries]
+            _al_names    = [e[1] for e in _al_entries]
+            _al_gene_top = [e[2] for e in _al_entries]
+            _al_placed   = list(_al_orig_x)
+
+            def _al_footprint(name):
+                return len(name) * _AL_CHARW * _AL_COS45 + _AL_PAD
+
+            for _ in range(300):
+                moved = False
+                for i in range(len(_al_placed) - 1):
+                    gap_needed = _al_footprint(_al_names[i])
+                    gap_actual = _al_placed[i + 1] - _al_placed[i]
+                    if gap_actual < gap_needed:
+                        push = (gap_needed - gap_actual) / 2
+                        _al_placed[i]     -= push
+                        _al_placed[i + 1] += push
+                        moved = True
+                if not moved:
+                    break
+
+            for _al_i, (_al_ox, _al_name, _al_gtop) in enumerate(_al_entries):
+                _al_px = _al_placed[_al_i]
+                _al_gy = _al_gtop - 3
+                if abs(_al_px - _al_ox) > 1:
+                    out.append(
+                        f'<line x1="{_al_ox:.1f}" y1="{_al_gtop:.1f}" '
+                        f'x2="{_al_px:.1f}" y2="{_al_gy:.1f}" '
+                        f'stroke="#aaa" stroke-width="0.7"/>\n'
+                    )
+                out.append(
+                    f'<text x="{_al_px:.1f}" y="{_al_gy:.1f}" '
+                    f'font-size="{_AL_FONT}" text-anchor="start" fill="#333" '
+                    f'transform="rotate(-45 {_al_px:.1f} {_al_gy:.1f})">'
+                    f'{_esc(_al_name)}</text>\n'
+                )
 
         # ── Scale ticks (first section only, shared scale spans max_len)
         if qi == 0:
