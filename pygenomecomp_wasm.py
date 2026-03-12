@@ -220,8 +220,8 @@ def find_insertion_sites(hits, max_ref_gap=50):
 # SVG Plot Generator (pure Python, no svgwrite dependency)
 # ============================================================
 
-SVG_WIDTH, SVG_HEIGHT = 1000, 920
-CENTER_X, CENTER_Y = 450, 470
+SVG_WIDTH, SVG_HEIGHT = 1400, 1100
+CENTER_X, CENTER_Y = 600, 550
 
 ANNOTATION_RING_RADIUS_INNER = 130.0
 ANNOTATION_RING_THICKNESS    = 18.0
@@ -465,59 +465,60 @@ def generate_svg(blast_hits, annotations, reference_length, query_names,
                 if gname:
                     _gene_label_queue.append((mid, gname))
 
-    # --- Gene name labels (de-overlapped) ---
+    # --- Gene name labels (radial tiers, horizontal text) ---
     if _gene_label_queue:
-        _GL_FONT  = 9
-        _GL_CHARW = _GL_FONT * 0.60   # estimated px per character
-        _GL_PAD   = 4                  # extra gap between adjacent labels (px)
-        _GL_R     = outermost_r + 50   # radius where label centres sit
+        _GL_FONT   = 9
+        _GL_CHARW  = _GL_FONT * 0.58   # estimated px per character
+        _GL_FONT_H = _GL_FONT * 1.3    # label line height
+        _GL_PAD    = 3                  # bbox padding
+        _GL_BASE_R = label_r + 18      # start just outside scale-tick labels
+        _GL_TIER_S = 14                # radial px per tier
 
-        # Sort by angle for left-to-right sweep
-        _gl_entries = sorted(_gene_label_queue, key=lambda t: t[0])
-        _gl_orig    = [e[0] for e in _gl_entries]
-        _gl_names   = [e[1] for e in _gl_entries]
-        _gl_placed  = list(_gl_orig)   # placed angles, start at original
+        def _gl_bbox(angle, name, tier):
+            r  = _GL_BASE_R + tier * _GL_TIER_S
+            bx = CENTER_X + r * math.cos(angle)
+            by = CENTER_Y + r * math.sin(angle)
+            w  = len(name) * _GL_CHARW
+            h  = _GL_FONT_H
+            if math.cos(angle) >= 0:   # right half: text grows rightward
+                return (bx - _GL_PAD, bx + w + _GL_PAD,
+                        by - h / 2 - _GL_PAD, by + h / 2 + _GL_PAD)
+            else:                       # left half: text grows leftward
+                return (bx - w - _GL_PAD, bx + _GL_PAD,
+                        by - h / 2 - _GL_PAD, by + h / 2 + _GL_PAD)
 
-        def _gl_half_arc(name):
-            """Half the angular width of a label at radius _GL_R."""
-            return (len(name) * _GL_CHARW / 2 + _GL_PAD) / _GL_R
+        def _gl_overlaps(a, b):
+            return a[0] < b[1] and a[1] > b[0] and a[2] < b[3] and a[3] > b[2]
 
-        # Iterative relaxation – push overlapping neighbours apart
-        for _ in range(300):
-            moved = False
-            for i in range(len(_gl_placed) - 1):
-                gap_needed = _gl_half_arc(_gl_names[i]) + _gl_half_arc(_gl_names[i + 1])
-                gap_actual = _gl_placed[i + 1] - _gl_placed[i]
-                if gap_actual < gap_needed:
-                    push = (gap_needed - gap_actual) / 2
-                    _gl_placed[i]     -= push
-                    _gl_placed[i + 1] += push
-                    moved = True
-            if not moved:
-                break
+        _gl_sorted = sorted(_gene_label_queue, key=lambda t: t[0])
+        _gl_placed = []   # list of (angle, name, tier, bbox)
 
-        for _gl_i, (_gl_orig_a, _gl_name) in enumerate(_gl_entries):
-            _gl_pa = _gl_placed[_gl_i]   # placed (de-overlapped) angle
+        for (_gl_angle, _gl_name) in _gl_sorted:
+            _gl_t = 0
+            while _gl_t <= 40:
+                _gl_bb = _gl_bbox(_gl_angle, _gl_name, _gl_t)
+                if all(not _gl_overlaps(_gl_bb, _p[3]) for _p in _gl_placed):
+                    break
+                _gl_t += 1
+            _gl_placed.append((_gl_angle, _gl_name, _gl_t,
+                                _gl_bbox(_gl_angle, _gl_name, _gl_t)))
 
-            # Leader line: annotation ring outer edge → label
-            _lx1 = CENTER_X + (ANNOTATION_RING_RADIUS_OUTER + 2) * math.cos(_gl_orig_a)
-            _ly1 = CENTER_Y + (ANNOTATION_RING_RADIUS_OUTER + 2) * math.sin(_gl_orig_a)
-            _lx2 = CENTER_X + (_GL_R - _gl_half_arc(_gl_name)) * math.cos(_gl_pa)
-            _ly2 = CENTER_Y + (_GL_R - _gl_half_arc(_gl_name)) * math.sin(_gl_pa)
-            out.append(f'<line x1="{_lx1:.1f}" y1="{_ly1:.1f}" x2="{_lx2:.1f}" y2="{_ly2:.1f}" '
-                       f'stroke="#aaa" stroke-width="0.7"/>\n')
-
-            # Label position
-            _gx  = CENTER_X + _GL_R * math.cos(_gl_pa)
-            _gy  = CENTER_Y + _GL_R * math.sin(_gl_pa)
-            _deg = math.degrees(_gl_pa) % 360
-            if _deg > 180:
-                _deg -= 360
-            _rot = _deg + 90 if -90 <= _deg <= 90 else _deg - 90
+        for (_gl_angle, _gl_name, _gl_tier, _) in _gl_placed:
+            _gl_r  = _GL_BASE_R + _gl_tier * _GL_TIER_S
+            _gl_lx = CENTER_X + _gl_r * math.cos(_gl_angle)
+            _gl_ly = CENTER_Y + _gl_r * math.sin(_gl_angle)
+            # Leader line from outermost ring edge to label anchor
+            _gl_sx = CENTER_X + tick_inner * math.cos(_gl_angle)
+            _gl_sy = CENTER_Y + tick_inner * math.sin(_gl_angle)
             out.append(
-                f'<text x="{_gx:.1f}" y="{_gy:.1f}" font-size="{_GL_FONT}" '
-                f'text-anchor="middle" dominant-baseline="middle" fill="#222" '
-                f'transform="rotate({_rot:.1f},{_gx:.2f},{_gy:.2f})">'
+                f'<line x1="{_gl_sx:.1f}" y1="{_gl_sy:.1f}" '
+                f'x2="{_gl_lx:.1f}" y2="{_gl_ly:.1f}" '
+                f'stroke="#aaa" stroke-width="0.7"/>\n'
+            )
+            _gl_anchor = 'start' if math.cos(_gl_angle) >= 0 else 'end'
+            out.append(
+                f'<text x="{_gl_lx:.1f}" y="{_gl_ly:.1f}" font-size="{_GL_FONT}" '
+                f'text-anchor="{_gl_anchor}" dominant-baseline="middle" fill="#222">'
                 f'{_esc(_gl_name)}</text>\n'
             )
 
