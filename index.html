@@ -263,6 +263,31 @@
       </button>
     </div>
 
+    <!-- Import Session card -->
+    <div class="bg-white rounded-xl shadow-sm border border-purple-200 p-5">
+      <h2 class="font-bold text-slate-700 mb-2 flex items-center gap-2">
+        <svg class="w-4 h-4 text-purple-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8M16 6l-4-4-4 4M12 2v13"/>
+        </svg>
+        Import Session
+      </h2>
+      <p class="text-sm text-slate-600 leading-relaxed mb-3">
+        Load a previously exported <strong>.json</strong> session to instantly restore all sequences,
+        annotations, settings, and alignment results — no re-alignment needed.
+      </p>
+      <div id="json-drop" class="drop-zone border-2 border-dashed border-purple-200 rounded-lg
+           p-4 text-center cursor-pointer hover:border-purple-400 hover:bg-purple-50 transition-all"
+           onclick="document.getElementById('json-file').click()">
+        <div id="json-drop-inner" class="text-sm text-slate-400">
+          <svg class="w-6 h-6 mx-auto mb-1 text-slate-300" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+            <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/>
+          </svg>
+          Drop a <strong class="text-slate-500">.json</strong> session file or <span class="text-purple-500 font-medium">click to browse</span>
+        </div>
+      </div>
+      <input type="file" id="json-file" accept=".json" class="hidden"/>
+    </div>
+
     <!-- Upload card -->
     <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5 flex flex-col gap-5">
       <h2 class="font-bold text-slate-700 flex items-center gap-2">
@@ -538,6 +563,19 @@
           <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/>
         </svg>
         Download SVG
+      </button>
+      <div class="w-px h-5 bg-slate-200 mx-1"></div>
+      <button id="btn-export-json"
+              class="flex items-center gap-1.5 text-xs bg-gradient-to-r from-purple-600 to-indigo-500
+                     text-white font-semibold rounded-lg px-4 py-1.5 hover:from-purple-700 hover:to-indigo-600
+                     transition-all shadow-sm">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+          <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+          <polyline points="14 2 14 8 20 8"/>
+          <polyline points="9 15 12 12 15 15"/>
+          <line x1="12" y1="12" x2="12" y2="18"/>
+        </svg>
+        Export JSON
       </button>
     </div>
 
@@ -1323,6 +1361,176 @@ document.getElementById('btn-load-ndm').addEventListener('click', async () => {
     document.getElementById('error-card').classList.remove('hidden');
   }
 });
+
+/* ------------------------------------------------------------------ */
+/* JSON Export                                                          */
+/* ------------------------------------------------------------------ */
+function exportProjectJSON() {
+  const session = {
+    version: '1.0',
+    exportedAt: new Date().toISOString(),
+    appName: 'PyGenomeComp Web',
+    config: {
+      minIdentity:    parseFloat(document.getElementById('min-identity').value),
+      minCoverage:    parseFloat(document.getElementById('min-coverage').value),
+      minLength:      parseInt(document.getElementById('min-length').value, 10),
+      showGeneNames:  document.getElementById('show-gene-names').checked,
+      showResGenes:   document.getElementById('show-res-genes').checked,
+      showInsertions: document.getElementById('show-insertions').checked,
+    },
+    reference:   refFile   ? { name: refFile.name,   content: refFile.content   } : null,
+    queries:     queryFiles.map(q => ({ name: q.name, content: q.content })),
+    annotations: annotFile ? { name: annotFile.name, content: annotFile.content } : null,
+    alignments:  cachedAlignmentTexts || null,
+  };
+
+  const json = JSON.stringify(session, null, 2);
+  const blob = new Blob([json], { type: 'application/json' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  const refBase = refFile ? refFile.name.replace(/\.[^.]+$/, '') : 'session';
+  a.download = `pygenomecomp_${refBase}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+document.getElementById('btn-export-json').addEventListener('click', exportProjectJSON);
+
+/* ------------------------------------------------------------------ */
+/* JSON Import                                                          */
+/* ------------------------------------------------------------------ */
+async function importProjectJSON(file) {
+  clearError();
+  try {
+    const text = await readFileAsText(file);
+    let session;
+    try {
+      session = JSON.parse(text);
+    } catch {
+      throw new Error('File is not valid JSON.');
+    }
+
+    if (!session.version || !session.reference) {
+      throw new Error('Invalid PyGenomeComp session file — missing required fields.');
+    }
+
+    // Restore sequences
+    refFile    = session.reference;
+    queryFiles = Array.isArray(session.queries) ? session.queries : [];
+    annotFile  = session.annotations || null;
+
+    // Restore config settings
+    if (session.config) {
+      const c = session.config;
+      if (c.minIdentity !== undefined) {
+        document.getElementById('min-identity').value = c.minIdentity;
+        document.getElementById('identity-val').textContent = c.minIdentity + '%';
+      }
+      if (c.minCoverage !== undefined) {
+        document.getElementById('min-coverage').value = c.minCoverage;
+        document.getElementById('coverage-val').textContent = c.minCoverage + '%';
+      }
+      if (c.minLength !== undefined) {
+        document.getElementById('min-length').value = c.minLength;
+      }
+      if (c.showGeneNames !== undefined) {
+        const showGenesEl = document.getElementById('show-gene-names');
+        const labelRes    = document.getElementById('label-res-genes');
+        const resCheckbox = document.getElementById('show-res-genes');
+        showGenesEl.checked = c.showGeneNames;
+        if (c.showGeneNames) {
+          labelRes.style.display  = 'flex';
+          labelRes.style.opacity  = '1';
+          resCheckbox.disabled    = false;
+        } else {
+          labelRes.style.display  = 'none';
+          labelRes.style.opacity  = '0.7';
+          resCheckbox.disabled    = true;
+          resCheckbox.checked     = false;
+        }
+      }
+      if (c.showResGenes !== undefined)   document.getElementById('show-res-genes').checked   = c.showResGenes;
+      if (c.showInsertions !== undefined) document.getElementById('show-insertions').checked  = c.showInsertions;
+    }
+
+    renderRefChips();
+    renderQueryChips();
+    renderAnnotChips();
+    updateRunButton();
+
+    // Mark drop zone success
+    document.getElementById('json-drop-inner').innerHTML =
+      '<span class="text-green-500 text-xs font-medium">✓ Session loaded — drop to replace</span>';
+
+    // If alignments are cached in the JSON, render immediately without re-running lastz
+    if (Array.isArray(session.alignments) && session.alignments.length > 0) {
+      cachedAlignmentTexts  = session.alignments;
+      cachedRefContent      = refFile.content;
+      cachedQueryFileNames  = queryFiles.map(q => q.name);
+      cachedAnnotContent    = annotFile ? annotFile.content : '';
+
+      // Wait for Python runtime if still loading
+      if (!pyReady) {
+        showProgress(true);
+        setProgress(0, 1, 'Waiting for Python runtime to finish downloading…');
+        await pyodideInitPromise;
+        if (!pyReady) throw new Error('Python runtime failed to load. Check your network connection and reload the page.');
+      }
+
+      showProgress(true);
+      setProgress(0, 1, 'Rendering visualization from imported session…');
+      document.getElementById('result-toolbar').classList.add('hidden');
+      document.getElementById('stats-bar').classList.add('hidden');
+      document.getElementById('svg-viewport').classList.add('hidden');
+      document.getElementById('placeholder').classList.remove('hidden');
+
+      currentScale = 1; panX = 0; panY = 0;
+      currentViewMode = 'circular';
+      setViewMode('circular');
+
+      await runPythonVisualization(false);
+
+      document.getElementById('stat-ref').textContent     = refFile.name;
+      document.getElementById('stat-queries').textContent = queryFiles.length + ' genome(s)';
+      document.getElementById('stats-bar').classList.remove('hidden');
+
+      setProgress(1, 1, '✓ Session imported successfully!');
+      const spinner = document.getElementById('prog-spinner');
+      spinner.classList.remove('spinner');
+      spinner.innerHTML = '<path d="M20 6L9 17l-5-5" stroke="#22c55e" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>';
+      setTimeout(() => {
+        showProgress(false);
+        spinner.classList.add('spinner');
+      }, 1800);
+    }
+  } catch (err) {
+    showError('Failed to import session: ' + err.message);
+    console.error('JSON import error:', err);
+  }
+}
+
+// Wire up JSON drop zone and file input
+(function() {
+  const drop = document.getElementById('json-drop');
+  const inp  = document.getElementById('json-file');
+
+  ['dragenter', 'dragover'].forEach(ev => drop.addEventListener(ev, e => {
+    e.preventDefault(); drop.classList.add('dragover');
+  }));
+  ['dragleave', 'drop'].forEach(ev => drop.addEventListener(ev, () => drop.classList.remove('dragover')));
+
+  drop.addEventListener('drop', async e => {
+    e.preventDefault();
+    const files = Array.from(e.dataTransfer.files);
+    if (files.length) await importProjectJSON(files[0]);
+  });
+
+  inp.addEventListener('change', async () => {
+    if (inp.files.length) await importProjectJSON(inp.files[0]);
+    inp.value = '';
+  });
+})();
 
 /* ------------------------------------------------------------------ */
 /* Boot — initialize both engines in parallel                          */
