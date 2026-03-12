@@ -2045,13 +2045,49 @@ def generate_linear_svg(blast_hits, annotations, reference_length, reference_nam
     W           = 1200
     LEFT        = 150   # reserved for sequence labels
     RIGHT       = 190   # wide right margin so the legend never overlaps content
-    TOP         = 55
     BOTTOM      = 70
     CONTENT_W   = W - LEFT - RIGHT
     TRACK_H     = 12    # backbone bar height (px)
     TRACK_SPACE = 90    # center-to-center vertical spacing (px)
     GENE_H      = 14    # gene-arrow height (px)
     RIBBON_OP   = 0.55  # ribbon opacity
+
+    # ── Pre-compute gene-label tiers (horizontal stacking) ────────────
+    _LBL_FONT  = 9
+    _LBL_CHARW = _LBL_FONT * 0.58
+    _LBL_HPAD  = 8
+    _TIER_H    = 14
+
+    _lbl_predata = []
+    if show_gene_names and annotations:
+        for _f in annotations:
+            _ft = _f['feature_type'].lower()
+            if _ft not in ('cds', 'gene'):
+                continue
+            if show_res_genes and not _is_resistance_gene(_f):
+                continue
+            _ax1 = LEFT + (_f['start'] - 1) / reference_length * CONTENT_W
+            _ax2 = LEFT + _f['end']          / reference_length * CONTENT_W
+            if _ax2 - _ax1 < 0.5:
+                continue
+            _gn = (_f['attributes'].get('Name') or _f.get('id') or
+                   _f['attributes'].get('gene') or '')
+            if _gn:
+                _lbl_predata.append(((_ax1 + _ax2) / 2, _gn))
+    _lbl_predata.sort(key=lambda t: t[0])
+
+    _tier_right = {}
+    _lbl_tiers  = []
+    for (_lx, _ln) in _lbl_predata:
+        _hw = len(_ln) * _LBL_CHARW / 2
+        _t  = 0
+        while _t in _tier_right and _lx - _hw < _tier_right[_t] + _LBL_HPAD:
+            _t += 1
+        _tier_right[_t] = _lx + _hw
+        _lbl_tiers.append((_lx, _ln, _t))
+
+    _n_tiers = max((_e[2] for _e in _lbl_tiers), default=-1) + 1
+    TOP      = 20 + _n_tiers * _TIER_H + 12
 
     H = TOP + n_tracks * TRACK_SPACE + BOTTOM
 
@@ -2168,7 +2204,6 @@ def generate_linear_svg(blast_hits, annotations, reference_length, reference_nam
             )
 
     # ── Gene-annotation arrows on the reference track ─────────────────
-    _lin_label_queue = []   # (orig_x, name, gene_top_y)
     if annotations:
         for feat in annotations:
             ftype = feat['feature_type'].lower()
@@ -2205,57 +2240,21 @@ def generate_linear_svg(blast_hits, annotations, reference_length, reference_nam
                 )
             out.append(f'<polygon points="{pts}" fill="{color}" opacity="0.9"/>\n')
 
-            if show_gene_names and ftype in ('cds', 'gene'):
-                gname = (
-                    feat['attributes'].get('Name') or feat.get('id') or
-                    feat['attributes'].get('gene') or ''
-                )
-                if gname:
-                    _lin_label_queue.append(((ax1 + ax2) / 2, gname, ref_cy - GENE_H / 2))
-
-    # ── Gene name labels for linear view (de-overlapped) ──────────────
-    if _lin_label_queue:
-        _LL_FONT  = 8
-        _LL_CHARW = _LL_FONT * 0.60
-        _LL_PAD   = 3
-        _LL_COS45 = math.cos(math.pi / 4)
-
-        _ll_entries  = sorted(_lin_label_queue, key=lambda t: t[0])
-        _ll_orig_x   = [e[0] for e in _ll_entries]
-        _ll_names    = [e[1] for e in _ll_entries]
-        _ll_gene_top = [e[2] for e in _ll_entries]
-        _ll_placed   = list(_ll_orig_x)
-
-        def _ll_footprint(name):
-            return len(name) * _LL_CHARW * _LL_COS45 + _LL_PAD
-
-        for _ in range(300):
-            moved = False
-            for i in range(len(_ll_placed) - 1):
-                gap_needed = _ll_footprint(_ll_names[i])
-                gap_actual = _ll_placed[i + 1] - _ll_placed[i]
-                if gap_actual < gap_needed:
-                    push = (gap_needed - gap_actual) / 2
-                    _ll_placed[i]     -= push
-                    _ll_placed[i + 1] += push
-                    moved = True
-            if not moved:
-                break
-
-        for _ll_i, (_ll_ox, _ll_name, _ll_gtop) in enumerate(_ll_entries):
-            _ll_px = _ll_placed[_ll_i]
-            _ll_gy = _ll_gtop - 3
-            if abs(_ll_px - _ll_ox) > 1:
-                out.append(
-                    f'<line x1="{_ll_ox:.1f}" y1="{_ll_gtop:.1f}" '
-                    f'x2="{_ll_px:.1f}" y2="{_ll_gy:.1f}" '
-                    f'stroke="#aaa" stroke-width="0.7"/>\n'
-                )
+    # ── Gene name labels – tiered horizontal rows ─────────────────────
+    if _lbl_tiers:
+        _gene_top_y = ref_cy - GENE_H / 2
+        for (_lx2, _ln2, _lt) in _lbl_tiers:
+            _ly = _gene_top_y - _TIER_H * (_lt + 1)
             out.append(
-                f'<text x="{_ll_px:.1f}" y="{_ll_gy:.1f}" '
-                f'font-size="{_LL_FONT}" text-anchor="start" fill="#333" '
-                f'transform="rotate(-45 {_ll_px:.1f} {_ll_gy:.1f})">'
-                f'{_esc(_ll_name)}</text>\n'
+                f'<line x1="{_lx2:.1f}" y1="{_gene_top_y - 1:.1f}" '
+                f'x2="{_lx2:.1f}" y2="{_ly + 2:.1f}" '
+                f'stroke="#aaa" stroke-width="0.7"/>\n'
+            )
+            out.append(
+                f'<text x="{_lx2:.1f}" y="{_ly:.1f}" '
+                f'font-size="{_LBL_FONT}" text-anchor="middle" '
+                f'dominant-baseline="auto" fill="#333">'
+                f'{_esc(_ln2)}</text>\n'
             )
 
     # ── Track labels ──────────────────────────────────────────────────
@@ -2434,11 +2433,47 @@ def generate_alignment_svg(blast_hits, annotations, reference_length, reference_
     TRACK_H      = 12       # backbone bar height (px)
     GENE_H       = 14       # gene arrow height (px)
     RIBBON_ZONE  = 75       # vertical space for ribbons between the two tracks
-    PAD_TOP      = 28       # padding above reference track in each section
     PAD_BOT      = 28       # padding below query track in each section
     SECTION_SEP  = 4        # gap line between sections
     RIBBON_OP    = 0.55     # ribbon opacity
     SCALE_H      = 22       # height reserved for scale labels (first section only)
+
+    # ── Pre-compute gene-label tiers (horizontal stacking) ────────────
+    _LBL_FONT  = 9
+    _LBL_CHARW = _LBL_FONT * 0.58
+    _LBL_HPAD  = 8
+    _TIER_H    = 14
+
+    _lbl_predata = []
+    if show_gene_names and annotations:
+        for _f in annotations:
+            _ft = _f['feature_type'].lower()
+            if _ft not in ('cds', 'gene'):
+                continue
+            if show_res_genes and not _is_resistance_gene(_f):
+                continue
+            _ax1 = LEFT + (_f['start'] - 1) / reference_length * CONTENT_W
+            _ax2 = LEFT + _f['end']          / reference_length * CONTENT_W
+            if _ax2 - _ax1 < 0.5:
+                continue
+            _gn = (_f['attributes'].get('Name') or _f.get('id') or
+                   _f['attributes'].get('gene') or '')
+            if _gn:
+                _lbl_predata.append(((_ax1 + _ax2) / 2, _gn))
+    _lbl_predata.sort(key=lambda t: t[0])
+
+    _tier_right = {}
+    _lbl_tiers  = []
+    for (_lx, _ln) in _lbl_predata:
+        _hw = len(_ln) * _LBL_CHARW / 2
+        _t  = 0
+        while _t in _tier_right and _lx - _hw < _tier_right[_t] + _LBL_HPAD:
+            _t += 1
+        _tier_right[_t] = _lx + _hw
+        _lbl_tiers.append((_lx, _ln, _t))
+
+    _n_tiers = max((_e[2] for _e in _lbl_tiers), default=-1) + 1
+    PAD_TOP   = 10 + _n_tiers * _TIER_H + 6
 
     section_h = PAD_TOP + TRACK_H + RIBBON_ZONE + TRACK_H + PAD_BOT
     TOP_HEADER = 50         # space at top for legend
@@ -2580,7 +2615,6 @@ def generate_alignment_svg(blast_hits, annotations, reference_length, reference_
                 )
 
         # ── Gene annotation arrows on reference ───────────────────────
-        _aln_label_queue = []   # (orig_x, name, gene_top_y)
         if annotations:
             for feat in annotations:
                 ftype = feat['feature_type'].lower()
@@ -2617,57 +2651,21 @@ def generate_alignment_svg(blast_hits, annotations, reference_length, reference_
                     )
                 out.append(f'<polygon points="{pts}" fill="{color}" opacity="0.9"/>\n')
 
-                if show_gene_names and ftype in ('cds', 'gene'):
-                    gname = (
-                        feat['attributes'].get('Name') or feat.get('id') or
-                        feat['attributes'].get('gene') or ''
-                    )
-                    if gname:
-                        _aln_label_queue.append(((ax1 + ax2) / 2, gname, ref_cy - GENE_H / 2))
-
-        # ── Gene name labels for alignment view (de-overlapped) ────────
-        if _aln_label_queue:
-            _AL_FONT  = 8
-            _AL_CHARW = _AL_FONT * 0.60
-            _AL_PAD   = 3
-            _AL_COS45 = math.cos(math.pi / 4)
-
-            _al_entries  = sorted(_aln_label_queue, key=lambda t: t[0])
-            _al_orig_x   = [e[0] for e in _al_entries]
-            _al_names    = [e[1] for e in _al_entries]
-            _al_gene_top = [e[2] for e in _al_entries]
-            _al_placed   = list(_al_orig_x)
-
-            def _al_footprint(name):
-                return len(name) * _AL_CHARW * _AL_COS45 + _AL_PAD
-
-            for _ in range(300):
-                moved = False
-                for i in range(len(_al_placed) - 1):
-                    gap_needed = _al_footprint(_al_names[i])
-                    gap_actual = _al_placed[i + 1] - _al_placed[i]
-                    if gap_actual < gap_needed:
-                        push = (gap_needed - gap_actual) / 2
-                        _al_placed[i]     -= push
-                        _al_placed[i + 1] += push
-                        moved = True
-                if not moved:
-                    break
-
-            for _al_i, (_al_ox, _al_name, _al_gtop) in enumerate(_al_entries):
-                _al_px = _al_placed[_al_i]
-                _al_gy = _al_gtop - 3
-                if abs(_al_px - _al_ox) > 1:
-                    out.append(
-                        f'<line x1="{_al_ox:.1f}" y1="{_al_gtop:.1f}" '
-                        f'x2="{_al_px:.1f}" y2="{_al_gy:.1f}" '
-                        f'stroke="#aaa" stroke-width="0.7"/>\n'
-                    )
+        # ── Gene name labels – tiered horizontal rows ──────────────────
+        if _lbl_tiers:
+            _gene_top_y = ref_cy - GENE_H / 2
+            for (_lx2, _ln2, _lt) in _lbl_tiers:
+                _ly = _gene_top_y - _TIER_H * (_lt + 1)
                 out.append(
-                    f'<text x="{_al_px:.1f}" y="{_al_gy:.1f}" '
-                    f'font-size="{_AL_FONT}" text-anchor="start" fill="#333" '
-                    f'transform="rotate(-45 {_al_px:.1f} {_al_gy:.1f})">'
-                    f'{_esc(_al_name)}</text>\n'
+                    f'<line x1="{_lx2:.1f}" y1="{_gene_top_y - 1:.1f}" '
+                    f'x2="{_lx2:.1f}" y2="{_ly + 2:.1f}" '
+                    f'stroke="#aaa" stroke-width="0.7"/>\n'
+                )
+                out.append(
+                    f'<text x="{_lx2:.1f}" y="{_ly:.1f}" '
+                    f'font-size="{_LBL_FONT}" text-anchor="middle" '
+                    f'dominant-baseline="auto" fill="#333">'
+                    f'{_esc(_ln2)}</text>\n'
                 )
 
         # ── Scale ticks (first section only, shared scale spans max_len)
