@@ -1781,6 +1781,7 @@ def generate_svg(blast_hits, annotations, reference_length, query_names,
                f'font-size="11" fill="#666">{reference_length:,} bp</text>\n')
 
     # --- Annotation ring ---
+    _gene_label_queue = []   # (orig_angle, name) collected for de-overlapping
     if annotations:
         out.append(_full_ring(CENTER_X, CENTER_Y,
                               ANNOTATION_RING_RADIUS_INNER, ANNOTATION_RING_RADIUS_OUTER,
@@ -1805,30 +1806,63 @@ def generate_svg(blast_hits, annotations, reference_length, query_names,
                 gname = (feat['attributes'].get('Name') or feat.get('id') or
                          feat['attributes'].get('gene') or '')
                 if gname:
-                    lr2 = outermost_r + 40
-                    x1 = CENTER_X + (ANNOTATION_RING_RADIUS_OUTER + 2) * math.cos(mid)
-                    y1 = CENTER_Y + (ANNOTATION_RING_RADIUS_OUTER + 2) * math.sin(mid)
-                    x2 = CENTER_X + (lr2 - 4) * math.cos(mid)
-                    y2 = CENTER_Y + (lr2 - 4) * math.sin(mid)
-                    out.append(f'<line x1="{x1:.1f}" y1="{y1:.1f}" x2="{x2:.1f}" y2="{y2:.1f}" '
-                               f'stroke="#aaa" stroke-width="0.7"/>\n')
-                    gx = CENTER_X + (outermost_r + 45) * math.cos(mid)
-                    gy = CENTER_Y + (outermost_r + 45) * math.sin(mid)
+                    _gene_label_queue.append((mid, gname))
 
-                    # Compute angle in standard (-180, 180) format
-                    deg = math.degrees(mid) % 360
-                    if deg > 180:
-                        deg -= 360
+    # --- Gene name labels (de-overlapped) ---
+    if _gene_label_queue:
+        _GL_FONT  = 9
+        _GL_CHARW = _GL_FONT * 0.60   # estimated px per character
+        _GL_PAD   = 4                  # extra gap between adjacent labels (px)
+        _GL_R     = outermost_r + 50   # radius where label centres sit
 
-                    # Calculate correct rotation so text is never upside down
-                    # The tangent line at angle `deg` is `deg + 90`.
-                    # If we rotate text by `deg + 90`, it is upright on the right side.
-                    # On the left side, we need to flip it by another 180 degrees (`deg - 90`)
-                    rot = deg + 90 if -90 <= deg <= 90 else deg - 90
+        # Sort by angle for left-to-right sweep
+        _gl_entries = sorted(_gene_label_queue, key=lambda t: t[0])
+        _gl_orig    = [e[0] for e in _gl_entries]
+        _gl_names   = [e[1] for e in _gl_entries]
+        _gl_placed  = list(_gl_orig)   # placed angles, start at original
 
-                    out.append(f'<text x="{gx:.1f}" y="{gy:.1f}" font-size="9" text-anchor="middle" '
-                               f'fill="#222" transform="rotate({rot:.1f},{gx:.2f},{gy:.2f})">'
-                               f'{_esc(gname)}</text>\n')
+        def _gl_half_arc(name):
+            """Half the angular width of a label at radius _GL_R."""
+            return (len(name) * _GL_CHARW / 2 + _GL_PAD) / _GL_R
+
+        # Iterative relaxation – push overlapping neighbours apart
+        for _ in range(300):
+            moved = False
+            for i in range(len(_gl_placed) - 1):
+                gap_needed = _gl_half_arc(_gl_names[i]) + _gl_half_arc(_gl_names[i + 1])
+                gap_actual = _gl_placed[i + 1] - _gl_placed[i]
+                if gap_actual < gap_needed:
+                    push = (gap_needed - gap_actual) / 2
+                    _gl_placed[i]     -= push
+                    _gl_placed[i + 1] += push
+                    moved = True
+            if not moved:
+                break
+
+        for _gl_i, (_gl_orig_a, _gl_name) in enumerate(_gl_entries):
+            _gl_pa = _gl_placed[_gl_i]   # placed (de-overlapped) angle
+
+            # Leader line: annotation ring outer edge → label
+            _lx1 = CENTER_X + (ANNOTATION_RING_RADIUS_OUTER + 2) * math.cos(_gl_orig_a)
+            _ly1 = CENTER_Y + (ANNOTATION_RING_RADIUS_OUTER + 2) * math.sin(_gl_orig_a)
+            _lx2 = CENTER_X + (_GL_R - _gl_half_arc(_gl_name)) * math.cos(_gl_pa)
+            _ly2 = CENTER_Y + (_GL_R - _gl_half_arc(_gl_name)) * math.sin(_gl_pa)
+            out.append(f'<line x1="{_lx1:.1f}" y1="{_ly1:.1f}" x2="{_lx2:.1f}" y2="{_ly2:.1f}" '
+                       f'stroke="#aaa" stroke-width="0.7"/>\n')
+
+            # Label position
+            _gx  = CENTER_X + _GL_R * math.cos(_gl_pa)
+            _gy  = CENTER_Y + _GL_R * math.sin(_gl_pa)
+            _deg = math.degrees(_gl_pa) % 360
+            if _deg > 180:
+                _deg -= 360
+            _rot = _deg + 90 if -90 <= _deg <= 90 else _deg - 90
+            out.append(
+                f'<text x="{_gx:.1f}" y="{_gy:.1f}" font-size="{_GL_FONT}" '
+                f'text-anchor="middle" dominant-baseline="middle" fill="#222" '
+                f'transform="rotate({_rot:.1f},{_gx:.2f},{_gy:.2f})">'
+                f'{_esc(_gl_name)}</text>\n'
+            )
 
     # --- Reference backbone ---
     out.append(f'<circle cx="{CENTER_X}" cy="{CENTER_Y}" r="{REFERENCE_RING_RADIUS:.1f}" '
