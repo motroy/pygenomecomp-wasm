@@ -2049,9 +2049,13 @@ def generate_svg(blast_hits, annotations, reference_length, query_names,
                             sr, er, color, 0.9))
             if show_gene_names and (ftype == 'gene' or is_mge_feat):
                 mid = (sr + er) / 2
-                gname = (feat['attributes'].get('Name') or feat.get('id') or
-                         feat['attributes'].get('mge_type') or
-                         feat['attributes'].get('gene') or '')
+                if is_mge_feat:
+                    gname = (feat['attributes'].get('product') or
+                             feat['attributes'].get('mge_type') or
+                             feat['attributes'].get('Name') or feat.get('id') or '')
+                else:
+                    gname = (feat['attributes'].get('Name') or feat.get('id') or
+                             feat['attributes'].get('gene') or '')
                 if gname:
                     _gene_label_queue.append((mid, gname))
 
@@ -2331,9 +2335,13 @@ def generate_linear_svg(blast_hits, annotations, reference_length, reference_nam
             _ax2 = LEFT + _f['end']          / reference_length * CONTENT_W
             if _ax2 - _ax1 < 0.5:
                 continue
-            _gn = (_f['attributes'].get('Name') or _f.get('id') or
-                   _f['attributes'].get('mge_type') or
-                   _f['attributes'].get('gene') or '')
+            if _is_mge_f:
+                _gn = (_f['attributes'].get('product') or
+                       _f['attributes'].get('mge_type') or
+                       _f['attributes'].get('Name') or _f.get('id') or '')
+            else:
+                _gn = (_f['attributes'].get('Name') or _f.get('id') or
+                       _f['attributes'].get('gene') or '')
             if _gn:
                 _lbl_predata.append(((_ax1 + _ax2) / 2, _gn))
     _lbl_predata.sort(key=lambda t: t[0])
@@ -2736,9 +2744,13 @@ def generate_alignment_svg(blast_hits, annotations, reference_length, reference_
             _ax2 = LEFT + _f['end']          / reference_length * CONTENT_W
             if _ax2 - _ax1 < 0.5:
                 continue
-            _gn = (_f['attributes'].get('Name') or _f.get('id') or
-                   _f['attributes'].get('mge_type') or
-                   _f['attributes'].get('gene') or '')
+            if _is_mge_f:
+                _gn = (_f['attributes'].get('product') or
+                       _f['attributes'].get('mge_type') or
+                       _f['attributes'].get('Name') or _f.get('id') or '')
+            else:
+                _gn = (_f['attributes'].get('Name') or _f.get('id') or
+                       _f['attributes'].get('gene') or '')
             if _gn:
                 _lbl_predata.append(((_ax1 + _ax2) / 2, _gn))
     _lbl_predata.sort(key=lambda t: t[0])
