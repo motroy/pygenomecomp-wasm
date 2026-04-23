@@ -249,6 +249,7 @@ ANNOTATION_COLORS = {
     'rrna': '#EE82EE',
 }
 DEFAULT_ANNOTATION_COLOR = '#808080'
+MGE_COLOR = '#f97316'  # orange – mobile genetic elements
 
 # Linear alignment view colours
 LINEAR_FWD_COLOR      = '#f4a460'   # sandy orange – forward alignment
@@ -342,6 +343,19 @@ def _is_resistance_gene(feat):
 
     return False
 
+def _is_mge(feat):
+    """Check if an annotation feature is a mobile genetic element."""
+    ftype = feat.get('feature_type', '').lower()
+    if ftype in ('mobile_element', 'transposable_element', 'repeat_region'):
+        return True
+    attrs = feat.get('attributes', {})
+    if attrs.get('category', '').lower() == 'mge':
+        return True
+    mge_keywords = ['insertion sequence', 'transposon', 'integron', 'transposase',
+                    'mobile element', 'is element']
+    text = f"{attrs.get('product', '')} {attrs.get('note', '')}".lower()
+    return any(kw in text for kw in mge_keywords)
+
 def _arc_path(cx, cy, ri, ro, s, e):
     large = 1 if abs(e - s) > math.pi else 0
     xso = cx + ro * math.cos(s);  yso = cy + ro * math.sin(s)
@@ -373,7 +387,7 @@ def _full_ring(cx, cy, ri, ro, fill, opacity=1.0):
 def generate_svg(blast_hits, annotations, reference_length, query_names,
                  reference_display_name, show_gene_names=False,
                  insertion_sites=None, show_insertions=True, min_identity=70.0,
-                 show_res_genes=False):
+                 show_res_genes=False, show_mge=False):
     """Generate a BRIG-style circular SVG and return it as a string."""
     if reference_length == 0:
         raise ValueError("Reference length cannot be zero.")
@@ -445,9 +459,15 @@ def generate_svg(blast_hits, annotations, reference_length, query_names,
                               '#f0f0f0'))
         for feat in annotations:
             ftype = feat['feature_type'].lower()
-            if ftype not in ('cds', 'gene', 'trna', 'rrna'):
-                continue
-            if show_res_genes and not _is_resistance_gene(feat):
+            is_standard = ftype in ('cds', 'gene', 'trna', 'rrna')
+            is_mge_feat = _is_mge(feat)
+            if is_standard:
+                if show_res_genes and not _is_resistance_gene(feat):
+                    continue
+            elif is_mge_feat:
+                if not show_mge:
+                    continue
+            else:
                 continue
             ms = feat['start'] - 1
             me = feat['end']
@@ -455,12 +475,14 @@ def generate_svg(blast_hits, annotations, reference_length, query_names,
             er = (me / reference_length) * 2 * math.pi - math.pi / 2
             if abs(er - sr) < 1e-6:
                 continue
+            color = MGE_COLOR if is_mge_feat else _annotation_color(ftype)
             out.append(_arc(CENTER_X, CENTER_Y,
                             ANNOTATION_RING_RADIUS_INNER, ANNOTATION_RING_RADIUS_OUTER,
-                            sr, er, _annotation_color(feat['feature_type']), 0.9))
-            if show_gene_names and feat['feature_type'].lower() == 'gene':
+                            sr, er, color, 0.9))
+            if show_gene_names and (ftype == 'gene' or is_mge_feat):
                 mid = (sr + er) / 2
                 gname = (feat['attributes'].get('Name') or feat.get('id') or
+                         feat['attributes'].get('mge_type') or
                          feat['attributes'].get('gene') or '')
                 if gname:
                     _gene_label_queue.append((mid, gname))
@@ -646,12 +668,15 @@ def generate_svg(blast_hits, annotations, reference_length, query_names,
         ly += ih - 2
 
         seen_types = set()
+        has_mge = False
         for feat in annotations:
             ft = feat['feature_type'].lower()
             if ft in ('cds', 'gene', 'trna', 'rrna') and ft not in seen_types:
                 if show_res_genes and not _is_resistance_gene(feat):
                     continue
                 seen_types.add(ft)
+            if show_mge and _is_mge(feat):
+                has_mge = True
 
         for label, ftype in (('CDS','cds'),('Gene','gene'),('tRNA','trna'),('rRNA','rrna')):
             if ftype in seen_types:
@@ -659,6 +684,10 @@ def generate_svg(blast_hits, annotations, reference_length, query_names,
                 out.append(f'<rect x="{lx}" y="{ly}" width="{bs}" height="{bs}" fill="{c}" rx="2"/>\n')
                 out.append(f'<text x="{lx+bs+7}" y="{ly+bs-2}" font-size="10" fill="#333">{label}</text>\n')
                 ly += ih
+        if has_mge:
+            out.append(f'<rect x="{lx}" y="{ly}" width="{bs}" height="{bs}" fill="{MGE_COLOR}" rx="2"/>\n')
+            out.append(f'<text x="{lx+bs+7}" y="{ly+bs-2}" font-size="10" fill="#333">MGE</text>\n')
+            ly += ih
 
     out.append('</svg>')
     return ''.join(out)
@@ -670,7 +699,8 @@ def generate_svg(blast_hits, annotations, reference_length, query_names,
 
 def generate_linear_svg(blast_hits, annotations, reference_length, reference_name,
                         query_names, show_gene_names=False, min_identity=70.0,
-                        insertion_sites=None, show_insertions=True, show_res_genes=False):
+                        insertion_sites=None, show_insertions=True, show_res_genes=False,
+                        show_mge=False):
     """Generate a linear (Mauve-style) alignment view SVG and return it as a string.
 
     Sequences are stacked as horizontal tracks. Alignment ribbons connect aligned
@@ -720,15 +750,22 @@ def generate_linear_svg(blast_hits, annotations, reference_length, reference_nam
     if show_gene_names and annotations:
         for _f in annotations:
             _ft = _f['feature_type'].lower()
-            if _ft not in ('cds', 'gene'):
-                continue
-            if show_res_genes and not _is_resistance_gene(_f):
+            _is_std = _ft in ('cds', 'gene')
+            _is_mge_f = _is_mge(_f)
+            if _is_std:
+                if show_res_genes and not _is_resistance_gene(_f):
+                    continue
+            elif _is_mge_f:
+                if not show_mge:
+                    continue
+            else:
                 continue
             _ax1 = LEFT + (_f['start'] - 1) / reference_length * CONTENT_W
             _ax2 = LEFT + _f['end']          / reference_length * CONTENT_W
             if _ax2 - _ax1 < 0.5:
                 continue
             _gn = (_f['attributes'].get('Name') or _f.get('id') or
+                   _f['attributes'].get('mge_type') or
                    _f['attributes'].get('gene') or '')
             if _gn:
                 _lbl_predata.append(((_ax1 + _ax2) / 2, _gn))
@@ -865,16 +902,22 @@ def generate_linear_svg(blast_hits, annotations, reference_length, reference_nam
     if annotations:
         for feat in annotations:
             ftype = feat['feature_type'].lower()
-            if ftype not in ('cds', 'gene', 'trna', 'rrna'):
-                continue
-            if show_res_genes and not _is_resistance_gene(feat):
+            is_standard = ftype in ('cds', 'gene', 'trna', 'rrna')
+            is_mge_feat = _is_mge(feat)
+            if is_standard:
+                if show_res_genes and not _is_resistance_gene(feat):
+                    continue
+            elif is_mge_feat:
+                if not show_mge:
+                    continue
+            else:
                 continue
             ax1 = LEFT + (feat['start'] - 1) / reference_length * CONTENT_W
             ax2 = LEFT + feat['end']           / reference_length * CONTENT_W
             aw  = ax2 - ax1
             if aw < 0.5:
                 continue
-            color  = _annotation_color(ftype)
+            color  = MGE_COLOR if is_mge_feat else _annotation_color(ftype)
             strand = feat.get('strand') or 1
             half_h = GENE_H / 2
             head_w = min(half_h * 1.2, aw * 0.4)
@@ -969,6 +1012,7 @@ def generate_linear_svg(blast_hits, annotations, reference_length, reference_nam
     if annotations:
         ann_types = []
         seen = set()
+        has_mge = False
         for feat in annotations:
             ft = feat['feature_type'].lower()
             if ft in ('cds', 'gene', 'trna', 'rrna') and ft not in seen:
@@ -976,9 +1020,13 @@ def generate_linear_svg(blast_hits, annotations, reference_length, reference_nam
                     continue
                 ann_types.append(ft)
                 seen.add(ft)
+            if show_mge and _is_mge(feat):
+                has_mge = True
         for ft in ann_types:
             label = {'cds': 'CDS', 'gene': 'Gene', 'trna': 'tRNA', 'rrna': 'rRNA'}[ft]
             solid_items.append((label, _annotation_color(ft)))
+        if has_mge:
+            solid_items.append(('MGE', MGE_COLOR))
 
     # Per-query section height: name row + fwd bar + inv bar + spacing
     _pqh = (ih - 4) + (gh + 3) + (gh + 3) + 6
@@ -1055,7 +1103,8 @@ def generate_linear_svg(blast_hits, annotations, reference_length, reference_nam
 
 def generate_alignment_svg(blast_hits, annotations, reference_length, reference_name,
                            query_names, show_gene_names=False, min_identity=70.0,
-                           insertion_sites=None, show_insertions=True, show_res_genes=False):
+                           insertion_sites=None, show_insertions=True, show_res_genes=False,
+                           show_mge=False):
     """Generate a pygenomeviz-style alignment SVG.
 
     Each query gets its own section with the reference track on top and the
@@ -1106,15 +1155,22 @@ def generate_alignment_svg(blast_hits, annotations, reference_length, reference_
     if show_gene_names and annotations:
         for _f in annotations:
             _ft = _f['feature_type'].lower()
-            if _ft not in ('cds', 'gene'):
-                continue
-            if show_res_genes and not _is_resistance_gene(_f):
+            _is_std = _ft in ('cds', 'gene')
+            _is_mge_f = _is_mge(_f)
+            if _is_std:
+                if show_res_genes and not _is_resistance_gene(_f):
+                    continue
+            elif _is_mge_f:
+                if not show_mge:
+                    continue
+            else:
                 continue
             _ax1 = LEFT + (_f['start'] - 1) / reference_length * CONTENT_W
             _ax2 = LEFT + _f['end']          / reference_length * CONTENT_W
             if _ax2 - _ax1 < 0.5:
                 continue
             _gn = (_f['attributes'].get('Name') or _f.get('id') or
+                   _f['attributes'].get('mge_type') or
                    _f['attributes'].get('gene') or '')
             if _gn:
                 _lbl_predata.append(((_ax1 + _ax2) / 2, _gn))
@@ -1276,16 +1332,22 @@ def generate_alignment_svg(blast_hits, annotations, reference_length, reference_
         if annotations:
             for feat in annotations:
                 ftype = feat['feature_type'].lower()
-                if ftype not in ('cds', 'gene', 'trna', 'rrna'):
-                    continue
-                if show_res_genes and not _is_resistance_gene(feat):
+                is_standard = ftype in ('cds', 'gene', 'trna', 'rrna')
+                is_mge_feat = _is_mge(feat)
+                if is_standard:
+                    if show_res_genes and not _is_resistance_gene(feat):
+                        continue
+                elif is_mge_feat:
+                    if not show_mge:
+                        continue
+                else:
                     continue
                 ax1 = LEFT + (feat['start'] - 1) / reference_length * CONTENT_W
                 ax2 = LEFT + feat['end']           / reference_length * CONTENT_W
                 aw  = ax2 - ax1
                 if aw < 0.5:
                     continue
-                color  = _annotation_color(ftype)
+                color  = MGE_COLOR if is_mge_feat else _annotation_color(ftype)
                 strand = feat.get('strand') or 1
                 half_h = GENE_H / 2
                 head_w = min(half_h * 1.2, aw * 0.4)
@@ -1387,6 +1449,7 @@ def generate_alignment_svg(blast_hits, annotations, reference_length, reference_
     if annotations:
         ann_types = []
         seen = set()
+        has_mge = False
         for feat in annotations:
             ft = feat['feature_type'].lower()
             if ft in ('cds', 'gene', 'trna', 'rrna') and ft not in seen:
@@ -1394,9 +1457,13 @@ def generate_alignment_svg(blast_hits, annotations, reference_length, reference_
                     continue
                 ann_types.append(ft)
                 seen.add(ft)
+            if show_mge and _is_mge(feat):
+                has_mge = True
         for ft in ann_types:
             label = {'cds': 'CDS', 'gene': 'Gene', 'trna': 'tRNA', 'rrna': 'rRNA'}[ft]
             solid_items.append((label, _annotation_color(ft)))
+        if has_mge:
+            solid_items.append(('MGE', MGE_COLOR))
 
     # Per-query section height: name row + fwd bar + inv bar + spacing
     _pqh = (ih - 4) + (gh + 3) + (gh + 3) + 6
@@ -1537,7 +1604,7 @@ def run_comparison(reference_fasta_text, query_alignment_texts, query_file_names
                    annotation_text=None,
                    min_identity=70.0, min_coverage=0.0, min_length=100,
                    show_gene_names=False, show_insertions=True,
-                   progress_callback=None, show_res_genes=False):
+                   progress_callback=None, show_res_genes=False, show_mge=False):
     """
     Run genome comparison pipeline using pre-computed lastz alignments.
 
@@ -1617,6 +1684,7 @@ def run_comparison(reference_fasta_text, query_alignment_texts, query_file_names
         show_insertions=show_insertions,
         min_identity=min_identity,
         show_res_genes=show_res_genes,
+        show_mge=show_mge,
     )
     linear_svg = generate_linear_svg(
         blast_hits=all_hits,
@@ -1629,6 +1697,7 @@ def run_comparison(reference_fasta_text, query_alignment_texts, query_file_names
         insertion_sites=all_insertions,
         show_insertions=show_insertions,
         show_res_genes=show_res_genes,
+        show_mge=show_mge,
     )
     alignment_svg = generate_alignment_svg(
         blast_hits=all_hits,
@@ -1641,6 +1710,7 @@ def run_comparison(reference_fasta_text, query_alignment_texts, query_file_names
         insertion_sites=all_insertions,
         show_insertions=show_insertions,
         show_res_genes=show_res_genes,
+        show_mge=show_mge,
     )
     _prog(total_steps, total_steps, 'Done!')
     return circular_svg, linear_svg, alignment_svg
