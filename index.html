@@ -432,17 +432,6 @@
           <span class="text-sm text-slate-600">Show gene names on plot</span>
         </label>
 
-        <!-- Show resistance gene names only -->
-        <label class="flex items-center gap-3 cursor-pointer select-none ml-6" id="label-res-genes" style="display:none; opacity: 0.7;">
-          <div class="relative">
-            <input type="checkbox" id="show-res-genes" class="sr-only peer" disabled/>
-            <div class="w-10 h-5 bg-slate-200 rounded-full peer-checked:bg-blue-600 transition-colors"></div>
-            <div class="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow
-                        transition-transform peer-checked:translate-x-5"></div>
-          </div>
-          <span class="text-sm text-slate-600">Resistance genes only</span>
-        </label>
-
         <!-- Show MGEs -->
         <label class="flex items-center gap-3 cursor-pointer select-none">
           <div class="relative">
@@ -452,6 +441,17 @@
                         transition-transform peer-checked:translate-x-5"></div>
           </div>
           <span class="text-sm text-slate-600">Show MGEs</span>
+        </label>
+
+        <!-- Show resistance gene names only -->
+        <label class="flex items-center gap-3 cursor-pointer select-none ml-6" id="label-res-genes" style="display:none; opacity: 0.7;">
+          <div class="relative">
+            <input type="checkbox" id="show-res-genes" class="sr-only peer" disabled/>
+            <div class="w-10 h-5 bg-slate-200 rounded-full peer-checked:bg-blue-600 transition-colors"></div>
+            <div class="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow
+                        transition-transform peer-checked:translate-x-5"></div>
+          </div>
+          <span class="text-sm text-slate-600">Resistance genes only</span>
         </label>
 
         <!-- Show insertions -->
