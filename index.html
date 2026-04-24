@@ -433,9 +433,9 @@
         </label>
 
         <!-- Show MGEs -->
-        <label class="flex items-center gap-3 cursor-pointer select-none">
+        <label class="flex items-center gap-3 cursor-pointer select-none ml-6" id="label-show-mge" style="display:none; opacity: 0.7;">
           <div class="relative">
-            <input type="checkbox" id="show-mge" class="sr-only peer"/>
+            <input type="checkbox" id="show-mge" class="sr-only peer" disabled/>
             <div class="w-10 h-5 bg-slate-200 rounded-full peer-checked:bg-orange-500 transition-colors"></div>
             <div class="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow
                         transition-transform peer-checked:translate-x-5"></div>
@@ -958,16 +958,25 @@ document.getElementById('show-gene-names').addEventListener('change', function()
   const isChecked = this.checked;
   const label = document.getElementById('label-res-genes');
   const checkbox = document.getElementById('show-res-genes');
+  const labelMge = document.getElementById('label-show-mge');
+  const checkboxMge = document.getElementById('show-mge');
 
   if (isChecked) {
     label.style.display = 'flex';
     label.style.opacity = '1';
     checkbox.disabled = false;
+    labelMge.style.display = 'flex';
+    labelMge.style.opacity = '1';
+    checkboxMge.disabled = false;
   } else {
     label.style.display = 'none';
     label.style.opacity = '0.7';
     checkbox.disabled = true;
     checkbox.checked = false;
+    labelMge.style.display = 'none';
+    labelMge.style.opacity = '0.7';
+    checkboxMge.disabled = true;
+    checkboxMge.checked = false;
   }
   scheduleReplot();
 });
